@@ -25,8 +25,8 @@ AUDIO = DATA / 'noheh'
 REPORTS = DATA / 'reports'
 for p in (DATA, AUDIO, REPORTS): p.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'db.json'
-FONT = str(BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf')
-FONT_B = str(BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf')
+FONT = str((BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf') if (BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf').exists() else (BASE / 'NotoNaskhArabic-Regular.ttf'))
+FONT_B = str((BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf') if (BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf').exists() else (BASE / 'NotoNaskhArabic-Bold.ttf'))
 LabelBase.register(name='NotoFA', fn_regular=FONT, fn_bold=FONT_B)
 
 
