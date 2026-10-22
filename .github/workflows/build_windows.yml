@@ -56,15 +56,29 @@ jobs:
           }
           python -m PyInstaller @args main.py
 
-      - name: Package Windows build
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Persian installer
+        shell: pwsh
+        run: |
+          $compiler = "$env:ProgramFiles(x86)\\Inno Setup 6\\ISCC.exe"
+          if (!(Test-Path $compiler)) { throw "Inno Setup compiler was not found at $compiler" }
+          & $compiler "installer/AmadSupport.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package portable Windows build
         shell: pwsh
         run: |
           Compress-Archive -Path "dist/AmadSupport/*" -DestinationPath "AmadSupport-Windows-x64.zip" -Force
 
-      - name: Upload Windows build
+      - name: Upload Windows installer and portable build
         uses: actions/upload-artifact@v4
         with:
           name: AmadSupport-Windows-x64
-          path: AmadSupport-Windows-x64.zip
+          path: |
+            dist-installer/AmadSupport-Setup-x64.exe
+            AmadSupport-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
