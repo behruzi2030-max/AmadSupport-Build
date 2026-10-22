@@ -56,13 +56,28 @@ def local_ips():
 
 DBDATA = load_db(); save_db(DBDATA)
 SERVER = None
+SESSIONS = {}
 
 class APIHandler(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def send_json(self, obj, code=200):
         b=json.dumps(obj, ensure_ascii=False).encode(); self.send_response(code); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(b))); self.end_headers(); self.wfile.write(b)
     def read_json(self):
-        n=int(self.headers.get('Content-Length','0')); return json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
+        n=int(self.headers.get('Content-Length','0'))
+        if n > 1_000_000: raise ValueError('request too large')
+        return json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
+    def session_user(self):
+        token=self.headers.get('Authorization','').removeprefix('Bearer ').strip()
+        return SESSIONS.get(token)
+    def require_user(self, admin=False):
+        user=self.session_user()
+        if not user:
+            self.send_json({'ok':False,'error':'ورود معتبر لازم است'},401)
+            return None
+        if admin and user.get('role') != 'admin':
+            self.send_json({'ok':False,'error':'دسترسی مدیر لازم است'},403)
+            return None
+        return user
     def do_GET(self):
         if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0'})
         if self.path.startswith('/audio/'):
@@ -86,12 +101,16 @@ class APIHandler(BaseHTTPRequestHandler):
             track=None
             if DBDATA['chants']:
                 track=DBDATA['chants'][DBDATA['chant_index'] % len(DBDATA['chants'])]; DBDATA['chant_index']=(DBDATA['chant_index']+1)%len(DBDATA['chants']); save_db(DBDATA)
-            return self.send_json({'ok':True,'name':user['name'],'role':user['role'],'chant':track,'time':now()})
+            token=secrets.token_urlsafe(32)
+            SESSIONS[token]={'username':user['username'],'name':user['name'],'role':user['role']}
+            return self.send_json({'ok':True,'name':user['name'],'role':user['role'],'token':token,'chant':track,'time':now()})
         if self.path=='/api/add_log':
+            if not self.require_user(): return
             typ=data.get('type'); entry=data.get('entry',{}); entry['timestamp']=now();
             if typ not in ('repairs','equipment'): return self.send_json({'ok':False},400)
             DBDATA[typ].append(entry); save_db(DBDATA); return self.send_json({'ok':True})
         if self.path=='/api/users':
+            if not self.require_user(admin=True): return
             if data.get('action')=='list': return self.send_json({'ok':True,'users':[{k:v for k,v in u.items() if k not in ('salt','password')} for u in DBDATA['users']]})
             if data.get('action') in ('add','reset'):
                 username=data.get('username','').strip(); password=data.get('password','')
@@ -104,6 +123,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 else: DBDATA['users'].append({'username':username,'name':data.get('name',username),'role':data.get('role','user'),'salt':salt,'password':digest,'active':True})
                 save_db(DBDATA); return self.send_json({'ok':True})
         if self.path=='/api/chants':
+            if not self.require_user(admin=True): return
             if data.get('action')=='list': return self.send_json({'ok':True,'chants':DBDATA['chants']})
         return self.send_json({'ok':False,'error':'unknown'},404)
 
@@ -157,7 +177,8 @@ class Login(Screen):
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),16),size_hint=(.9,.35)).open()
     def server_mode(self,*a):
         if SERVER is None: ServerThread().start()
-        App.get_running_app().state.update(user={'name':'مدیر سامانه','role':'admin'},server_url='http://127.0.0.1:8765'); self.manager.current='home'
+        token=secrets.token_urlsafe(32); SESSIONS[token]={'username':'admin','name':'مدیر سامانه','role':'admin'}
+        App.get_running_app().state.update(user={'name':'مدیر سامانه','role':'admin','token':token},server_url='http://127.0.0.1:8765'); self.manager.current='home'
 
 class Home(Screen):
     def on_enter(self):
@@ -168,7 +189,10 @@ class Home(Screen):
         self.clock=Clock.schedule_interval(self.tick,1)
         grid=GridLayout(cols=2,spacing=dp(8),size_hint_y=None)
         grid.bind(minimum_height=grid.setter('height'))
-        for t,screen in [('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارشات','reports'),('مدیریت کاربران','users'),('مدیریت نوحه (فقط مدیر)','chants'),('تنظیمات سرور','server')]:
+        user=App.get_running_app().state.get('user',{})
+        items=[('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارشات','reports')]
+        if user.get('role')=='admin': items += [('مدیریت کاربران','users'),('مدیریت نوحه (فقط مدیر)','chants'),('تنظیمات سرور','server')]
+        for t,screen in items:
             grid.add_widget(btn(t,lambda b,s=screen:self.go(s),60))
         root.add_widget(grid)
         root.add_widget(btn('خروج',lambda b:self.logout(),48))
@@ -178,7 +202,10 @@ class Home(Screen):
             if isinstance(w,BoxLayout):
                 for x in w.children:
                     if isinstance(x,Label) and ':' in x.text and '/' in x.text: x.text=datetime.now().strftime('%Y/%m/%d   %H:%M:%S')
-    def go(self,s): self.manager.current=s
+    def go(self,s):
+        if s in ('users','chants','server') and App.get_running_app().state.get('user',{}).get('role')!='admin':
+            Popup(title=fa('عدم دسترسی'),content=lbl('این بخش فقط برای مدیر سامانه است',16),size_hint=(.8,.3)).open(); return
+        self.manager.current=s
     def logout(self):
         try: self.clock.cancel()
         except: pass
@@ -189,13 +216,13 @@ class SimpleLog(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl(self.title,24,True)); self.person=TextInput(hint_text=fa('نام / واحد'),multiline=False); self.desc=TextInput(hint_text=fa('شرح'),multiline=False); root.add_widget(self.person); root.add_widget(self.desc); root.add_widget(btn('ثبت رویداد همراه با تاریخ و ساعت دقیق',self.save)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def save(self,*a):
         try:
-            data={'type':self.typ,'entry':{'person':self.person.text,'description':self.desc.text}}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/add_log',data=json.dumps(data).encode(),headers={'Content-Type':'application/json'}); urllib.request.urlopen(req,timeout=5); Popup(title=fa('ثبت شد'),content=lbl(now(),18),size_hint=(.8,.3)).open(); self.person.text=''; self.desc.text=''
+            data={'type':self.typ,'entry':{'person':self.person.text,'description':self.desc.text}}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/add_log',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); urllib.request.urlopen(req,timeout=5); Popup(title=fa('ثبت شد'),content=lbl(now(),18),size_hint=(.8,.3)).open(); self.person.text=''; self.desc.text=''
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),16),size_hint=(.9,.3)).open()
 
 class Users(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text='نام کاربری لاتین',multiline=False); self.n=TextInput(hint_text=fa('نام کاربر'),multiline=False); self.p=TextInput(hint_text=fa('رمز عبور جدید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی رمز کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def call(self,action):
-        data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json'}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
+        data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
     def add(self,*a):
         try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl('کاربر ایجاد شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
         except Exception as e: Popup(title='Error',content=lbl(e,16)).open()
