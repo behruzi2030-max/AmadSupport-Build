@@ -1,4 +1,4 @@
-import os, json, threading, hashlib, secrets, socket, urllib.request, urllib.parse, time
+import os, json, threading, hashlib, secrets, socket, urllib.request, urllib.parse, time, html, webbrowser
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -161,9 +161,9 @@ class Login(Screen):
         root.add_widget(lbl('سامانه آماد و پشتیبانی',30,True))
         root.add_widget(lbl('پایگاه شهید صیاد شیرازی',21))
         root.add_widget(lbl('بسم الله الرحمن الرحیم\nبسیج لشکر مخلص خداست (امام خمینی ره)\nبسیجی یعنی علی که تمام وجودش وقف اسلام بود (امام شهید ره)',18))
-        self.user=TextInput(hint_text=fa('نام کاربری لاتین'),multiline=False)
-        self.pw=TextInput(hint_text=fa('رمز عبور'),password=True,multiline=False)
-        self.url=TextInput(text='http://127.0.0.1:8765',hint_text='آدرس سرور',multiline=False)
+        self.user=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربری لاتین'),multiline=False)
+        self.pw=TextInput(hint_text=fa('متن خود را بنویسید: رمز عبور'),password=True,multiline=False)
+        self.url=TextInput(text='http://127.0.0.1:8765',hint_text=fa('متن خود را بنویسید: آدرس سرور'),multiline=False)
         root.add_widget(self.user); root.add_widget(self.pw); root.add_widget(self.url)
         root.add_widget(btn('ورود به سرور',self.login))
         root.add_widget(btn('اجرای این گوشی به عنوان سرور',self.server_mode))
@@ -213,14 +213,94 @@ class Home(Screen):
 
 class SimpleLog(Screen):
     typ='repairs'; title=''
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl(self.title,24,True)); self.person=TextInput(hint_text=fa('نام / واحد'),multiline=False); self.desc=TextInput(hint_text=fa('شرح'),multiline=False); root.add_widget(self.person); root.add_widget(self.desc); root.add_widget(btn('ثبت رویداد همراه با تاریخ و ساعت دقیق',self.save)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl(self.title,24,True)); self.person=TextInput(hint_text=fa('متن خود را بنویسید: نام / واحد'),multiline=False); self.desc=TextInput(hint_text=fa('متن خود را بنویسید: شرح'),multiline=False); root.add_widget(self.person); root.add_widget(self.desc); root.add_widget(btn('ثبت رویداد همراه با تاریخ و ساعت دقیق',self.save)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def save(self,*a):
         try:
             data={'type':self.typ,'entry':{'person':self.person.text,'description':self.desc.text}}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/add_log',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); urllib.request.urlopen(req,timeout=5); Popup(title=fa('ثبت شد'),content=lbl(now(),18),size_hint=(.8,.3)).open(); self.person.text=''; self.desc.text=''
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),16),size_hint=(.9,.3)).open()
 
+class EquipmentScreen(Screen):
+    def on_enter(self):
+        self.clear_widgets()
+        root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(7))
+        root.add_widget(lbl('ثبت تحویل و عودت تجهیزات',23,True))
+        scroll=ScrollView()
+        form=BoxLayout(orientation='vertical',padding=dp(4),spacing=dp(7),size_hint_y=None)
+        form.bind(minimum_height=form.setter('height'))
+        self.first=TextInput(hint_text=fa('متن خود را بنویسید: نام'),multiline=False,size_hint_y=None,height=dp(46))
+        self.last=TextInput(hint_text=fa('متن خود را بنویسید: نام خانوادگی'),multiline=False,size_hint_y=None,height=dp(46))
+        self.father=TextInput(hint_text=fa('متن خود را بنویسید: نام پدر'),multiline=False,size_hint_y=None,height=dp(46))
+        self.national=TextInput(hint_text=fa('متن خود را بنویسید: کد ملی'),multiline=False,size_hint_y=None,height=dp(46))
+        self.phone=TextInput(hint_text=fa('متن خود را بنویسید: شماره تلفن'),multiline=False,size_hint_y=None,height=dp(46))
+        self.equipment=TextInput(hint_text=fa('متن خود را بنویسید: مشخصات تجهیزات تحویلی، تعداد و کد'),multiline=True,size_hint_y=None,height=dp(90))
+        self.signature=TextInput(hint_text=fa('متن خود را بنویسید: نام/توضیح امضای دریافت‌کننده (اختیاری)'),multiline=False,size_hint_y=None,height=dp(46))
+        for field in (self.first,self.last,self.father,self.national,self.phone,self.equipment,self.signature):
+            form.add_widget(field)
+        form.add_widget(btn('الحاق عکس مأمور',self.pick_photo,46))
+        self.photo_label=lbl('عکسی انتخاب نشده است',14)
+        form.add_widget(self.photo_label)
+        scroll.add_widget(form); root.add_widget(scroll)
+        root.add_widget(btn('ثبت اطلاعات و آماده‌سازی کارت چاپ',self.save_handover,52))
+        root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'),44))
+        self.add_widget(root)
+        self.photo_path=''
+
+    def pick_photo(self,*a):
+        start='/storage/emulated/0/Download' if os.path.isdir('/storage/emulated/0/Download') else str(Path.home())
+        fc=FileChooserListView(path=start,filters=['*.png','*.jpg','*.jpeg','*.webp'])
+        box=BoxLayout(orientation='vertical',spacing=dp(6))
+        box.add_widget(fc)
+        pop=Popup(title=fa('انتخاب عکس مأمور'),content=box,size_hint=(.95,.9))
+        box.add_widget(btn('انتخاب عکس',lambda b:self._copy_photo(fc.selection,pop),44))
+        self.photo_popup=pop; pop.open()
+
+    def _copy_photo(self,selection,popup):
+        if not selection:
+            Popup(title=fa('توجه'),content=lbl('ابتدا یک عکس انتخاب کنید',15),size_hint=(.8,.3)).open()
+            return
+        src=Path(selection[0])
+        safe_name='officer_'+str(int(time.time()))+src.suffix.lower()
+        dst=REPORTS/safe_name
+        try:
+            dst.write_bytes(src.read_bytes())
+            self.photo_path=str(dst)
+            self.photo_label.text=fa('عکس پیوست شد: '+src.name)
+            popup.dismiss()
+        except Exception as e:
+            Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
+
+    def save_handover(self,*a):
+        first=self.first.text.strip(); last=self.last.text.strip()
+        equipment=self.equipment.text.strip()
+        if not first or not last or not equipment:
+            Popup(title=fa('اطلاعات ناقص'),content=lbl('نام، نام خانوادگی و مشخصات تجهیزات را وارد کنید',15),size_hint=(.9,.3)).open()
+            return
+        entry={
+            'first_name':first,'last_name':last,'father_name':self.father.text.strip(),
+            'national_id':self.national.text.strip(),'phone':self.phone.text.strip(),
+            'equipment_details':equipment,'signature':self.signature.text.strip(),
+            'photo_path':self.photo_path,'timestamp':now(),'record_type':'تحویل تجهیزات'
+        }
+        try:
+            data={'type':'equipment','entry':entry}
+            req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/add_log',
+                data=json.dumps(data,ensure_ascii=False).encode(),
+                headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')})
+            urllib.request.urlopen(req,timeout=5).read()
+            # Keep a local copy as well so the card can be prepared on this device.
+            if App.get_running_app().state.get('server_url') in ('http://127.0.0.1:8765','http://localhost:8765'):
+                if not any(x.get('timestamp')==entry['timestamp'] and x.get('national_id')==entry['national_id'] for x in DBDATA.setdefault('equipment',[])):
+                    DBDATA['equipment'].append(entry); save_db(DBDATA)
+            card_path=make_handover_card(entry)
+            Popup(title=fa('ثبت شد'),content=lbl('اطلاعات ثبت شد. فایل کارت برای چاپ آماده است:\n'+str(card_path),14),size_hint=(.95,.45)).open()
+            for field in (self.first,self.last,self.father,self.national,self.phone,self.equipment,self.signature):
+                field.text=''
+            self.photo_path=''; self.photo_label.text=fa('عکسی انتخاب نشده است')
+        except Exception as e:
+            Popup(title=fa('خطا در ثبت'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
+
 class Users(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text='نام کاربری لاتین',multiline=False); self.n=TextInput(hint_text=fa('نام کاربر'),multiline=False); self.p=TextInput(hint_text=fa('رمز عبور جدید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی رمز کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربری لاتین'),multiline=False); self.n=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربر'),multiline=False); self.p=TextInput(hint_text=fa('متن خود را بنویسید: رمز عبور جدید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی رمز کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def call(self,action):
         data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
     def add(self,*a):
@@ -239,7 +319,16 @@ class Chants(Screen):
         src=Path(sel[0]); dst=AUDIO/src.name; dst.write_bytes(src.read_bytes()); DBDATA['chants'].append(src.name); save_db(DBDATA); self.pop.dismiss(); Popup(title=fa('ثبت شد'),content=lbl(src.name,16),size_hint=(.8,.3)).open()
 
 class Reports(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارشات',24,True)); root.add_widget(btn('خروجی Word',lambda b:self.export('docx'))); root.add_widget(btn('خروجی PDF',lambda b:self.export('pdf'))); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارشات',24,True)); root.add_widget(btn('خروجی Word',lambda b:self.export('docx'))); root.add_widget(btn('خروجی PDF',lambda b:self.export('pdf'))); root.add_widget(btn('ساخت کارت چاپ برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def export_latest_card(self,*a):
+        records=DBDATA.get('equipment',[])
+        if not records:
+            Popup(title=fa('گزارشات'),content=lbl('هنوز اطلاعات تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
+        path=make_handover_card(records[-1])
+        try: webbrowser.open(Path(path).resolve().as_uri())
+        except Exception: pass
+        Popup(title=fa('کارت آماده چاپ'),content=lbl('کارت HTML در این مسیر ذخیره شد:\n'+str(path)+'\nآن را در مرورگر باز و چاپ کنید.',14),size_hint=(.95,.45)).open()
+
     def export(self,kind):
         text='گزارش سامانه آماد و پشتیبانی\nتاریخ تولید: '+now()+'\n\nتعمیرات:\n'+json.dumps(DBDATA.get('repairs',[]),ensure_ascii=False,indent=2)+'\n\nتحویل و عودت تجهیزات:\n'+json.dumps(DBDATA.get('equipment',[]),ensure_ascii=False,indent=2)
         if kind=='docx': path=REPORTS/'report.docx'; make_docx(path,text)
@@ -248,6 +337,44 @@ class Reports(Screen):
 
 class ServerScreen(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('سرور این گوشی',24,True)); root.add_widget(lbl('پورت: 8765',18)); root.add_widget(lbl('\n'.join('آدرس: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه گوشی دیگر می‌توانند با همین آدرس و روی یک شبکه به سرور وصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+
+def make_handover_card(entry):
+    """Create a printer-friendly ID-card-sized HTML file for an equipment handover."""
+    photo=entry.get('photo_path','')
+    photo_html=''
+    if photo and Path(photo).exists():
+        photo_uri=Path(photo).resolve().as_uri()
+        photo_html=f'<img class="photo" src="{html.escape(photo_uri, quote=True)}" alt="عکس مأمور">'
+    def value(key):
+        return html.escape(str(entry.get(key,'') or '—'))
+    timestamp=value('timestamp')
+    card=f'''<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>کارت تحویل تجهیزات</title>
+<style>
+@page {{ size: 85.6mm 54mm; margin: 0; }}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; font-family: Tahoma, Arial, sans-serif; }}
+.card {{ width: 85.6mm; height: 54mm; border: 1px solid #333; padding: 3mm; position: relative; overflow: hidden; direction: rtl; }}
+.photo {{ position: absolute; top: 3mm; left: 3mm; width: 19mm; height: 22mm; object-fit: cover; border: 1px solid #555; }}
+h3 {{ text-align: center; font-size: 10pt; margin: 0 20mm 2mm 20mm; }}
+.row {{ font-size: 7.5pt; margin: 1.1mm 0; line-height: 1.2; }}
+.details {{ height: 10mm; overflow: hidden; white-space: pre-wrap; }}
+.sign {{ position: absolute; bottom: 3mm; right: 3mm; left: 3mm; border-top: 1px solid #777; padding-top: 1.5mm; font-size: 7pt; }}
+@media screen {{ body {{ background: #eee; padding: 10mm; }} .card {{ background: white; margin: auto; }} }}
+</style></head><body><section class="card">
+{photo_html}<h3>کارت تحویل تجهیزات</h3>
+<div class="row">نام: {value('first_name')}　 نام خانوادگی: {value('last_name')}</div>
+<div class="row">نام پدر: {value('father_name')}　 کد ملی: {value('national_id')}</div>
+<div class="row">شماره تلفن: {value('phone')}</div>
+<div class="row">مشخصات تجهیزات: <span class="details">{value('equipment_details')}</span></div>
+<div class="row">تاریخ و ساعت تحویل: {timestamp}</div>
+<div class="sign">امضای دریافت‌کننده: {value('signature')}　　امضای تحویل‌دهنده: __________________</div>
+</section><script>window.onload=()=>{{if(new URLSearchParams(location.search).has('print')) window.print();}}</script></body></html>'''
+    target=REPORTS/('handover_card_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.html')
+    target.write_text(card,encoding='utf-8')
+    return target
 
 def make_docx(path,text):
     import zipfile, html
@@ -266,7 +393,7 @@ def make_pdf(path,text):
 
 class AmadApp(App):
     def build(self):
-        self.state={}; sm=ScreenManager(); sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home')); sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'; sm.add_widget(SimpleLog(name='equipment')); sm.get_screen('equipment').typ='equipment'; sm.get_screen('equipment').title='تحویل و عودت تجهیزات'; sm.add_widget(Reports(name='reports')); sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); return sm
+        self.state={}; sm=ScreenManager(); sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home')); sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'; sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports')); sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); return sm
     def play_chant(self, name):
         url=self.state['server_url']+'/audio/'+urllib.parse.quote(name); local=AUDIO/name
         try:
