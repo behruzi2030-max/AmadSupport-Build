@@ -291,7 +291,12 @@ class EquipmentScreen(Screen):
             if App.get_running_app().state.get('server_url') not in ('http://127.0.0.1:8765','http://localhost:8765'):
                 DBDATA.setdefault('equipment',[]).append(entry); save_db(DBDATA)
             card_path=make_handover_card(entry)
-            Popup(title=fa('ثبت شد'),content=lbl('اطلاعات ثبت شد. فایل کارت برای چاپ آماده است:\n'+str(card_path),14),size_hint=(.95,.45)).open()
+            notice=BoxLayout(orientation='vertical',padding=dp(10),spacing=dp(8))
+            notice.add_widget(lbl('اطلاعات ثبت شد. کارت برای چاپ آماده است. برای ارسال مشخصات به پیام‌رسان‌های نصب‌شده، اشتراک‌گذاری را انتخاب کنید.',14))
+            notice.add_widget(btn('اشتراک‌گذاری در ایتا، روبیکا، سروش یا بله',lambda b:share_handover_entry(entry),48))
+            notice.add_widget(btn('بستن',lambda b:result_popup.dismiss(),42))
+            result_popup=Popup(title=fa('ثبت و آماده‌سازی کارت'),content=notice,size_hint=(.95,.48))
+            result_popup.open()
             for field in (self.first,self.last,self.father,self.national,self.phone,self.equipment,self.signature):
                 field.text=''
             self.photo_path=''; self.photo_label.text=fa('عکسی انتخاب نشده است')
@@ -318,7 +323,7 @@ class Chants(Screen):
         src=Path(sel[0]); dst=AUDIO/src.name; dst.write_bytes(src.read_bytes()); DBDATA['chants'].append(src.name); save_db(DBDATA); self.pop.dismiss(); Popup(title=fa('ثبت شد'),content=lbl(src.name,16),size_hint=(.8,.3)).open()
 
 class Reports(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارشات',24,True)); root.add_widget(btn('خروجی Word',lambda b:self.export('docx'))); root.add_widget(btn('خروجی PDF',lambda b:self.export('pdf'))); root.add_widget(btn('ساخت کارت چاپ برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارشات',24,True)); root.add_widget(btn('خروجی Word',lambda b:self.export('docx'))); root.add_widget(btn('خروجی PDF',lambda b:self.export('pdf'))); root.add_widget(btn('ساخت کارت چاپ برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('اشتراک‌گذاری آخرین کارت در پیام‌رسان‌ها',self.share_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def export_latest_card(self,*a):
         records=DBDATA.get('equipment',[])
         if not records:
@@ -328,6 +333,12 @@ class Reports(Screen):
         except Exception: pass
         Popup(title=fa('کارت آماده چاپ'),content=lbl('کارت HTML در این مسیر ذخیره شد:\n'+str(path)+'\nآن را در مرورگر باز و چاپ کنید.',14),size_hint=(.95,.45)).open()
 
+    def share_latest_card(self,*a):
+        records=DBDATA.get('equipment',[])
+        if not records:
+            Popup(title=fa('گزارشات'),content=lbl('هنوز اطلاعات تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
+        share_handover_entry(records[-1])
+
     def export(self,kind):
         text='گزارش سامانه آماد و پشتیبانی\nتاریخ تولید: '+now()+'\n\nتعمیرات:\n'+json.dumps(DBDATA.get('repairs',[]),ensure_ascii=False,indent=2)+'\n\nتحویل و عودت تجهیزات:\n'+json.dumps(DBDATA.get('equipment',[]),ensure_ascii=False,indent=2)
         if kind=='docx': path=REPORTS/'report.docx'; make_docx(path,text)
@@ -336,6 +347,37 @@ class Reports(Screen):
 
 class ServerScreen(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('سرور این گوشی',24,True)); root.add_widget(lbl('پورت: 8765',18)); root.add_widget(lbl('\n'.join('آدرس: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه گوشی دیگر می‌توانند با همین آدرس و روی یک شبکه به سرور وصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+
+def share_handover_entry(entry):
+    """Open Android's native share chooser with the handover-card details as text."""
+    lines=[
+        'کارت تحویل تجهیزات - پایگاه شهید صیاد شیرازی',
+        'نام: '+str(entry.get('first_name','')),
+        'نام خانوادگی: '+str(entry.get('last_name','')),
+        'نام پدر: '+str(entry.get('father_name','')),
+        'کد ملی: '+str(entry.get('national_id','')),
+        'شماره تلفن: '+str(entry.get('phone','')),
+        'مشخصات تجهیزات: '+str(entry.get('equipment_details','')),
+        'تاریخ و ساعت تحویل: '+str(entry.get('timestamp','')),
+        'امضای دریافت‌کننده: '+str(entry.get('signature','')),
+    ]
+    payload='\\n'.join(lines)
+    try:
+        from jnius import autoclass
+        Intent=autoclass('android.content.Intent')
+        String=autoclass('java.lang.String')
+        PythonActivity=autoclass('org.kivy.android.PythonActivity')
+        activity=PythonActivity.mActivity
+        intent=Intent(Intent.ACTION_SEND)
+        intent.setType('text/plain')
+        intent.putExtra(Intent.EXTRA_SUBJECT,String('کارت تحویل تجهیزات'))
+        intent.putExtra(Intent.EXTRA_TEXT,String(payload))
+        chooser=Intent.createChooser(intent,String('ارسال کارت از طریق پیام‌رسان'))
+        activity.startActivity(chooser)
+        return True
+    except Exception as e:
+        Popup(title=fa('اشتراک‌گذاری'),content=lbl('اشتراک‌گذاری مستقیم فقط در نسخه اندروید قابل اجراست.\\n'+str(e),14),size_hint=(.92,.4)).open()
+        return False
 
 def make_handover_card(entry):
     """Create a printer-friendly ID-card-sized HTML file for an equipment handover."""
