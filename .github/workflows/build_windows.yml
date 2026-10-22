@@ -38,23 +38,23 @@ jobs:
       - name: Build application
         shell: pwsh
         run: |
-          $args = @(
+          $pyiArgs = @(
             "--noconfirm",
             "--clean",
             "--name=AmadSupport",
             "--windowed",
             "--onedir",
-            "--collect-all=kivy",
-            "--collect-all=arabic_reshaper",
-            "--collect-all=bidi"
+            "--collect-data=kivy",
+            "--hidden-import=arabic_reshaper",
+            "--hidden-import=bidi.algorithm"
           )
           if (Test-Path "NotoNaskhArabic-Regular.ttf") {
-            $args += @("--add-data", "NotoNaskhArabic-Regular.ttf;.")
+            $pyiArgs += @("--add-data", "NotoNaskhArabic-Regular.ttf;.")
           }
           if (Test-Path "NotoNaskhArabic-Bold.ttf") {
-            $args += @("--add-data", "NotoNaskhArabic-Bold.ttf;.")
+            $pyiArgs += @("--add-data", "NotoNaskhArabic-Bold.ttf;.")
           }
-          python -m PyInstaller @args main.py
+          python -m PyInstaller @pyiArgs main.py
 
       - name: Install Inno Setup
         shell: pwsh
@@ -63,7 +63,7 @@ jobs:
       - name: Build Persian installer
         shell: pwsh
         run: |
-          $compiler = "$env:ProgramFiles(x86)\\Inno Setup 6\\ISCC.exe"
+          $compiler = "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe"
           if (!(Test-Path $compiler)) { throw "Inno Setup compiler was not found at $compiler" }
           & $compiler "installer/AmadSupport.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
