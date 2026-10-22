@@ -288,9 +288,8 @@ class EquipmentScreen(Screen):
                 headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')})
             urllib.request.urlopen(req,timeout=5).read()
             # Keep a local copy as well so the card can be prepared on this device.
-            if App.get_running_app().state.get('server_url') in ('http://127.0.0.1:8765','http://localhost:8765'):
-                if not any(x.get('timestamp')==entry['timestamp'] and x.get('national_id')==entry['national_id'] for x in DBDATA.setdefault('equipment',[])):
-                    DBDATA['equipment'].append(entry); save_db(DBDATA)
+            if App.get_running_app().state.get('server_url') not in ('http://127.0.0.1:8765','http://localhost:8765'):
+                DBDATA.setdefault('equipment',[]).append(entry); save_db(DBDATA)
             card_path=make_handover_card(entry)
             Popup(title=fa('ثبت شد'),content=lbl('اطلاعات ثبت شد. فایل کارت برای چاپ آماده است:\n'+str(card_path),14),size_hint=(.95,.45)).open()
             for field in (self.first,self.last,self.father,self.national,self.phone,self.equipment,self.signature):
