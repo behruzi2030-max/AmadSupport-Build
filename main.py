@@ -361,7 +361,7 @@ def share_handover_entry(entry):
         'تاریخ و ساعت تحویل: '+str(entry.get('timestamp','')),
         'امضای دریافت‌کننده: '+str(entry.get('signature','')),
     ]
-    payload='\\n'.join(lines)
+    payload='\n'.join(lines)
     try:
         from jnius import autoclass
         Intent=autoclass('android.content.Intent')
@@ -376,7 +376,7 @@ def share_handover_entry(entry):
         activity.startActivity(chooser)
         return True
     except Exception as e:
-        Popup(title=fa('اشتراک‌گذاری'),content=lbl('اشتراک‌گذاری مستقیم فقط در نسخه اندروید قابل اجراست.\\n'+str(e),14),size_hint=(.92,.4)).open()
+        Popup(title=fa('اشتراک‌گذاری'),content=lbl('اشتراک‌گذاری مستقیم فقط در نسخه اندروید قابل اجراست.\n'+str(e),14),size_hint=(.92,.4)).open()
         return False
 
 def make_handover_card(entry):
@@ -426,7 +426,11 @@ def make_docx(path,text):
 
 def make_pdf(path,text):
     # Minimal valid PDF with Helvetica; Persian is stored as UTF-8 bytes and may not render in all viewers.
-    lines=text.replace('\r','').splitlines(); content='BT /F1 10 Tf 40 800 Td '+''.join(f'({line.encode("latin-1","replace").decode("latin-1").replace("(","\\(").replace(")","\\)")}) Tj 0 -14 Td ' for line in lines)+'ET'
+    lines=text.replace('\r','').splitlines()
+    def pdf_escape(line):
+        encoded=line.encode('latin-1','replace').decode('latin-1')
+        return encoded.replace('\\\\','\\\\\\\\').replace('(','\\\\(').replace(')','\\\\)')
+    content='BT /F1 10 Tf 40 800 Td '+''.join('('+pdf_escape(line)+') Tj 0 -14 Td ' for line in lines)+'ET'
     objs=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',f'<< /Length {len(content.encode())} >>\nstream\n{content}\nendstream','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
     out=b'%PDF-1.4\n'; offs=[]
     for i,o in enumerate(objs,1): offs.append(len(out)); out+=f'{i} 0 obj\n{o}\nendobj\n'.encode()
