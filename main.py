@@ -67,7 +67,8 @@ class APIHandler(BaseHTTPRequestHandler):
         if n > 1_000_000: raise ValueError('request too large')
         return json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
     def session_user(self):
-        token=self.headers.get('Authorization','').removeprefix('Bearer ').strip()
+        token=self.headers.get('Authorization','').strip()
+        if token.startswith('Bearer '): token=token[len('Bearer '):].strip()
         return SESSIONS.get(token)
     def require_user(self, admin=False):
         user=self.session_user()
