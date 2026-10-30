@@ -17,6 +17,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle
 
 BASE = Path(__file__).resolve().parent
@@ -437,9 +438,58 @@ def make_pdf(path,text):
     for i,o in enumerate(objs,1): offs.append(len(out)); out+=f'{i} 0 obj\n{o}\nendobj\n'.encode()
     x=len(out); out+=f'xref\n0 {len(objs)+1}\n0000000000 65535 f \n'.encode()+b''.join(f'{q:010d} 00000 n \n'.encode() for q in offs)+f'trailer\n<< /Size {len(objs)+1} /Root 1 0 R >>\nstartxref\n{x}\n%%EOF'.encode(); path.write_bytes(out)
 
+class SplashBadge(Widget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas:
+            Color(0.27, 0.34, 0.16, 1)
+            self._circle = __import__('kivy.graphics', fromlist=['Ellipse']).Ellipse(pos=self.pos, size=self.size)
+        self.bind(pos=self._sync_circle, size=self._sync_circle)
+
+    def _sync_circle(self, *args):
+        self._circle.pos = self.pos
+        self._circle.size = self.size
+
+
 class AmadApp(App):
     def build(self):
-        self.state={}; sm=ScreenManager(); sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home')); sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'; sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports')); sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); return sm
+        self.title = 'سامانه آماد و پشتیبانی پایگاه شهید صیاد شیرازی'
+        self.state={}
+        sm=ScreenManager()
+        sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home'))
+        sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'
+        sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports'))
+        sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server'))
+        self._main_root = sm
+
+        splash = BoxLayout(orientation='vertical', padding=dp(28), spacing=dp(18))
+        with splash.canvas.before:
+            Color(0.94, 0.95, 0.91, 1)
+            self._splash_bg = RoundedRectangle(pos=splash.pos, size=splash.size, radius=[0])
+        splash.bind(pos=lambda w, v: setattr(self._splash_bg, 'pos', v),
+                    size=lambda w, v: setattr(self._splash_bg, 'size', v))
+        splash.add_widget(Widget())
+        badge_box = BoxLayout(orientation='vertical', size_hint=(1, None), height=dp(190),
+                              padding=dp(20))
+        badge = SplashBadge(size_hint=(None, None), size=(dp(150), dp(150)),
+                            pos_hint={'center_x': .5})
+        badge_box.add_widget(badge)
+        badge_box.add_widget(Label(text='✦', font_size='58sp', color=(1, 1, 1, 1),
+                                   size_hint=(1, 1), pos_hint={'center_x': .5}))
+        splash.add_widget(badge_box)
+        splash.add_widget(Label(text='سامانه آماد و پشتیبانی',
+                                font_name='NotoFA', font_size='25sp',
+                                color=(0.18, 0.24, 0.12, 1), size_hint=(1, None), height=dp(48)))
+        splash.add_widget(Label(text='پایگاه شهید صیاد شیرازی',
+                                font_name='NotoFA', font_size='19sp',
+                                color=(0.27, 0.34, 0.16, 1), size_hint=(1, None), height=dp(40)))
+        splash.add_widget(Widget())
+        Clock.schedule_once(self._show_main, 4.0)
+        return splash
+
+    def _show_main(self, dt):
+        self.root = self._main_root
+
     def play_chant(self, name):
         url=self.state['server_url']+'/audio/'+urllib.parse.quote(name); local=AUDIO/name
         try:
