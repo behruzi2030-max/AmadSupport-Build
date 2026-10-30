@@ -83,6 +83,8 @@ class APIHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.1'})
         if self.path.startswith('/audio/'):
+            # Audio may be played after login, but must not be exposed as a public file endpoint.
+            if not self.require_user(): return
             name=urllib.parse.unquote(self.path.split('/audio/',1)[1]); f=AUDIO / os.path.basename(name)
             if not f.exists(): return self.send_json({'ok':False,'error':'not found'},404)
             self.send_response(200); self.send_header('Content-Type','audio/mpeg'); self.send_header('Content-Length',str(f.stat().st_size)); self.end_headers();
@@ -499,8 +501,11 @@ class AmadApp(App):
     def play_chant(self, name):
         url=self.state['server_url']+'/audio/'+urllib.parse.quote(name); local=AUDIO/name
         try:
-            if not local.exists(): urllib.request.urlretrieve(url,local)
-            s=SoundLoader.load(str(local));
+            if not local.exists():
+                req=urllib.request.Request(url,headers={'Authorization':'Bearer '+self.state.get('user',{}).get('token','')})
+                with urllib.request.urlopen(req,timeout=15) as response:
+                    local.write_bytes(response.read())
+            s=SoundLoader.load(str(local))
             if s: s.play()
         except Exception: pass
 
