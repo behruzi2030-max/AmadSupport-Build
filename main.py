@@ -629,7 +629,7 @@ class Reports(Screen):
     def export(self,kind):
         try:
             records=self.get_records()
-            text='گزارش سامانه آماد و پشتیبانی\nتاریخ تولید: '+now()+'\n\nتعمیرات:\n'+json.dumps(records.get('repairs',[]),ensure_ascii=False,indent=2)+'\n\nتحویل و عودت تجهیزات:\n'+json.dumps(records.get('equipment',[]),ensure_ascii=False,indent=2)
+            text=format_report(records)
             if kind=='docx': path=REPORTS/'report.docx'; make_docx(path,text)
             else: path=REPORTS/'report.pdf'; make_pdf(path,text)
             Popup(title=fa('گزارش آماده شد'),content=lbl(str(path),14),size_hint=(.95,.4)).open()
@@ -708,9 +708,39 @@ h3 {{ text-align: center; font-size: 10pt; margin: 0 20mm 2mm 20mm; }}
     target.write_text(card,encoding='utf-8')
     return target
 
+def format_report(records):
+    lines=['گزارش سامانه آماد و پشتیبانی پایگاه شهید صیاد شیرازی','تاریخ و ساعت تهیه گزارش: '+now(),'']
+    sections=[
+        ('گزارش تعمیرات',records.get('repairs',[]),'repairs'),
+        ('گزارش تحویل و عودت تجهیزات',records.get('equipment',[]),'equipment')
+    ]
+    for title,items,kind in sections:
+        lines.extend([title,'تعداد موارد ثبت‌شده: '+str(len(items)),''])
+        if not items:
+            lines.append('موردی ثبت نشده است.'); lines.append('')
+            continue
+        for index,item in enumerate(items,1):
+            lines.append('ردیف '+str(index))
+            if kind=='repairs':
+                lines.append('نام یا واحد: '+str(item.get('person','—')))
+                lines.append('شرح تعمیرات: '+str(item.get('description','—')))
+            else:
+                lines.append('نوع رویداد: '+str(item.get('record_type','تحویل تجهیزات')))
+                lines.append('نام: '+str(item.get('first_name','—')))
+                lines.append('نام خانوادگی: '+str(item.get('last_name','—')))
+                lines.append('نام پدر: '+str(item.get('father_name','—')))
+                lines.append('کد ملی: '+str(item.get('national_id','—')))
+                lines.append('شمارهٔ تلفن: '+str(item.get('phone','—')))
+                lines.append('مشخصات تجهیزات: '+str(item.get('equipment_details','—')))
+                lines.append('امضای تحویل‌گیرنده: '+str(item.get('signature','—')))
+            lines.append('تاریخ و ساعت ثبت: '+str(item.get('timestamp','—')))
+            lines.append('')
+    return '\\n'.join(lines)
+
+
 def make_docx(path,text):
     import zipfile, html
-    body=''.join(f'<w:p><w:r><w:t>{html.escape(line)}</w:t></w:r></w:p>' for line in text.splitlines())
+    body=''.join(f'<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Noto Naskh Arabic" w:hAnsi="Noto Naskh Arabic" w:cs="Noto Naskh Arabic"/><w:lang w:val="fa-IR"/></w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>' for line in text.splitlines())
     files={'[Content_Types].xml':'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>','_rels/.rels':'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>','word/document.xml':f'<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{body}<w:sectPr/></w:body></w:document>'}
     with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as z:
         for n,c in files.items(): z.writestr(n,c)
