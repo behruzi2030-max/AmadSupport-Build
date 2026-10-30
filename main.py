@@ -186,7 +186,7 @@ class Login(Screen):
         self.url=TextInput(text='http://127.0.0.1:8765',hint_text=fa('نشانی سرور را وارد کنید'),multiline=False)
         root.add_widget(self.user); root.add_widget(self.pw); root.add_widget(self.url)
         root.add_widget(btn('ورود به سامانه',self.login))
-        root.add_widget(btn('راه‌اندازی این تلفن همراه به‌عنوان کارساز',self.server_mode))
+        root.add_widget(btn('راه‌اندازی این تلفن همراه به‌عنوان سرور',self.server_mode))
         self.add_widget(root)
     def login(self,*a):
         try:
@@ -202,8 +202,8 @@ class Login(Screen):
             ServerThread().start()
             time.sleep(0.15)
         self.url.text='http://127.0.0.1:8765'
-        Popup(title=fa('سرور محلی فعال شد'),
-              content=lbl('کارساز این تلفن همراه فعال شد. برای ورود، نام کاربری و رمز عبور معتبر مدیر را وارد کنید. راه‌اندازی سرور به‌تنهایی دسترسی مدیریتی ایجاد نمی‌کند.',15),
+        Popup(title=fa('سرور محلی راه‌اندازی شد'),
+              content=lbl('سرور این تلفن همراه فعال شد. برای ورود، نام کاربری و رمز عبور معتبر مدیر را وارد کنید. راه‌اندازی سرور به‌تنهایی دسترسی مدیریتی ایجاد نمی‌کند.',15),
               size_hint=(.92,.38)).open()
 
 class Home(Screen):
@@ -217,7 +217,7 @@ class Home(Screen):
         grid.bind(minimum_height=grid.setter('height'))
         user=App.get_running_app().state.get('user',{})
         items=[('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارش‌ها','reports')]
-        if user.get('role')=='admin': items += [('مدیریت کاربران','users'),('مدیریت نوحه‌ها (ویژهٔ مدیر)','chants'),('تنظیمات کارساز','server')]
+        if user.get('role')=='admin': items += [('مدیریت کاربران','users'),('مدیریت نوحه‌ها (ویژهٔ مدیر)','chants'),('تنظیمات سرور','server')]
         for t,screen in items:
             grid.add_widget(btn(t,lambda b,s=screen:self.go(s),60))
         root.add_widget(grid)
@@ -330,15 +330,15 @@ class EquipmentScreen(Screen):
             Popup(title=fa('خطا در ثبت'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class Users(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False); self.n=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربر'),multiline=False); self.p=TextInput(hint_text=fa('گذرواژهٔ جدید را وارد کنید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False); self.n=TextInput(hint_text=fa('نام و نام خانوادگی کاربر را وارد کنید'),multiline=False); self.p=TextInput(hint_text=fa('گذرواژهٔ جدید را وارد کنید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def call(self,action):
         data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
     def add(self,*a):
         try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl('کاربر ایجاد شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
-        except Exception as e: Popup(title='Error',content=lbl(e,16)).open()
+        except Exception as e: Popup(title=fa('خطا'),content=lbl(e,16)).open()
     def reset(self,*a):
         try: r=self.call('reset'); Popup(title=fa('نتیجه'),content=lbl('گذرواژه بازنشانی شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
-        except Exception as e: Popup(title='Error',content=lbl(e,16)).open()
+        except Exception as e: Popup(title=fa('خطا'),content=lbl(e,16)).open()
 
 class Chants(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت نوحه‌ها — ویژهٔ مدیر سامانه',22,True)); root.add_widget(btn('افزودن فایل نوحه',self.pick)); root.add_widget(lbl('نوحه‌ها در پوشهٔ اختصاصی سامانه ذخیره می‌شوند و ترتیب پخش آن‌ها هنگام ورود مدیریت می‌شود.',15)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
@@ -374,7 +374,7 @@ class Reports(Screen):
         except Exception as e:
             Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.35)).open(); return
         if not records:
-            Popup(title=fa('گزارش‌ها'),content=lbl('هنوز هنوز اطلاعاتی دربارهٔ تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
+            Popup(title=fa('گزارش‌ها'),content=lbl('هنوز اطلاعاتی دربارهٔ تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
         path=make_handover_card(records[-1])
         try: webbrowser.open(Path(path).resolve().as_uri())
         except Exception: pass
@@ -385,7 +385,7 @@ class Reports(Screen):
         except Exception as e:
             Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.35)).open(); return
         if not records:
-            Popup(title=fa('گزارش‌ها'),content=lbl('هنوز هنوز اطلاعاتی دربارهٔ تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
+            Popup(title=fa('گزارش‌ها'),content=lbl('هنوز اطلاعاتی دربارهٔ تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
         share_handover_entry(records[-1])
 
     def export(self,kind):
@@ -399,7 +399,7 @@ class Reports(Screen):
             Popup(title=fa('خطا در تهیه گزارش'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class ServerScreen(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('کارساز این تلفن همراه',24,True)); root.add_widget(lbl('پورت: 8765',18)); root.add_widget(lbl('\n'.join('آدرس: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه گوشی دیگر می‌توانند با همین آدرس و روی یک شبکه به سرور وصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('سرور این تلفن همراه',24,True)); root.add_widget(lbl('درگاه: ۸۷۶۵',18)); root.add_widget(lbl('\n'.join('نشانی: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه تلفن همراه دیگر می‌توانند با همین نشانی و در همان شبکه به سرور متصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
 
 def share_handover_entry(entry):
     """Open Android's native share chooser with the handover-card details as text."""
@@ -429,7 +429,7 @@ def share_handover_entry(entry):
         activity.startActivity(chooser)
         return True
     except Exception as e:
-        Popup(title=fa('اشتراک‌گذاری'),content=lbl('اشتراک‌گذاری مستقیم فقط در نسخه اندروید قابل اجراست.\n'+str(e),14),size_hint=(.92,.4)).open()
+        Popup(title=fa('ارسال'),content=lbl('ارسال مستقیم فقط در نسخهٔ اندروید امکان‌پذیر است.\n'+str(e),14),size_hint=(.92,.4)).open()
         return False
 
 def make_handover_card(entry):
