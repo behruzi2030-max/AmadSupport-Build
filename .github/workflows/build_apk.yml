@@ -29,6 +29,9 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      - name: Validate Python syntax
+        run: python -m py_compile main.py p4a-recipes/reportlab/__init__.py
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
