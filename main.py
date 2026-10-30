@@ -87,16 +87,29 @@ class APIHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.1'})
         if self.path.startswith('/audio/'):
-            # Audio may be played after login, but must not be exposed as a public file endpoint.
             if not self.require_user(): return
-            name=urllib.parse.unquote(self.path.split('/audio/',1)[1]); f=AUDIO / os.path.basename(name)
+            name=os.path.basename(urllib.parse.unquote(self.path.split('/audio/',1)[1])); f=AUDIO/name
             if not f.exists(): return self.send_json({'ok':False,'error':'not found'},404)
-            self.send_response(200); self.send_header('Content-Type','audio/mpeg'); self.send_header('Content-Length',str(f.stat().st_size)); self.end_headers();
+            mime={'.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4'}.get(f.suffix.lower(),'application/octet-stream')
+            self.send_response(200); self.send_header('Content-Type',mime); self.send_header('Content-Length',str(f.stat().st_size)); self.end_headers()
             with open(f,'rb') as h:
                 while True:
-                    c=h.read(65536)
-                    if not c: break
-                    self.wfile.write(c)
+                    chunk=h.read(65536)
+                    if not chunk: break
+                    self.wfile.write(chunk)
+            return
+        if self.path.startswith('/api/photo/'):
+            if not self.require_user(): return
+            name=os.path.basename(urllib.parse.unquote(self.path.split('/api/photo/',1)[1]))
+            f=REPORTS/name
+            if not f.exists() or f.suffix.lower() not in ('.png','.jpg','.jpeg','.webp'):
+                return self.send_json({'ok':False,'error':'تصویر پیدا نشد'},404)
+            self.send_response(200); self.send_header('Content-Type',{'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[f.suffix.lower()]); self.send_header('Content-Length',str(f.stat().st_size)); self.end_headers()
+            with open(f,'rb') as h:
+                while True:
+                    chunk=h.read(65536)
+                    if not chunk: break
+                    self.wfile.write(chunk)
             return
         self.send_json({'ok':False,'error':'not found'},404)
     def do_POST(self):
@@ -155,7 +168,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 save_db(DBDATA); return self.send_json({'ok':True})
         if self.path=='/api/reports':
             if not self.require_user(): return
-            return self.send_json({'ok':True,'repairs':DBDATA.get('repairs',[]),'equipment':DBDATA.get('equipment',[])})
+            equipment=[]
+            for row in DBDATA.get('equipment',[]):
+                item=dict(row)
+                if item.get('photo_path'): item['photo_path']=os.path.basename(item['photo_path'])
+                equipment.append(item)
+            return self.send_json({'ok':True,'repairs':DBDATA.get('repairs',[]),'equipment':equipment})
         if self.path=='/api/chants':
             if not self.require_user(admin=True): return
             if data.get('action')=='list': return self.send_json({'ok':True,'chants':DBDATA['chants']})
@@ -421,6 +439,16 @@ class Reports(Screen):
             headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
         result=json.loads(urllib.request.urlopen(req,timeout=10).read().decode('utf-8'))
         if not result.get('ok'): raise Exception(result.get('error','دریافت گزارش ناموفق بود'))
+        for item in result.get('equipment',[]):
+            photo=item.get('photo_path','')
+            if photo and not Path(photo).exists():
+                photo_req=urllib.request.Request(app.state['server_url']+'/api/photo/'+urllib.parse.quote(photo),headers={'Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
+                try:
+                    raw=urllib.request.urlopen(photo_req,timeout=10).read()
+                    local_photo=REPORTS/photo
+                    local_photo.write_bytes(raw)
+                    item['photo_path']=str(local_photo)
+                except Exception: item['photo_path']=''
         return result
     def export_latest_card(self,*a):
         try: records=self.get_records().get('equipment',[])
