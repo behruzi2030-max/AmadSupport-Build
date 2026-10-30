@@ -735,7 +735,7 @@ def format_report(records):
                 lines.append('امضای تحویل‌گیرنده: '+str(item.get('signature','—')))
             lines.append('تاریخ و ساعت ثبت: '+str(item.get('timestamp','—')))
             lines.append('')
-    return '\\n'.join(lines)
+    return '\n'.join(lines)
 
 
 def make_docx(path,text):
