@@ -9,7 +9,8 @@ from pythonforandroid.recipe import PythonRecipe
 class ReportLabRecipe(PythonRecipe):
     version = "master"
     url = "https://github.com/MrBitBucket/reportlab-mirror/archive/refs/heads/master.zip"
-    depends = ["python3", "setuptools", "pillow", "charset-normalizer"]
+    depends = ["pillow", "charset-normalizer"]
+    hostpython_prerequisites = ["setuptools"]
     site_packages_name = "reportlab"
 
 
