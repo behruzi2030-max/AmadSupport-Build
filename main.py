@@ -216,6 +216,20 @@ class APIHandler(BaseHTTPRequestHandler):
         if self.path=='/api/chants':
             if not self.require_user(admin=True): return
             if data.get('action')=='list': return self.send_json({'ok':True,'chants':DBDATA['chants']})
+            if data.get('action')=='reorder':
+                order=data.get('chants',[])
+                if not isinstance(order,list) or len(order)!=len(set(order)) or set(order)!=set(DBDATA['chants']):
+                    return self.send_json({'ok':False,'error':'ترتیب نوحه‌ها معتبر نیست'},400)
+                DBDATA['chants']=order; DBDATA['chant_index']=0; save_db(DBDATA)
+                return self.send_json({'ok':True})
+            if data.get('action')=='delete':
+                name=os.path.basename(str(data.get('name','')))
+                if name not in DBDATA['chants']: return self.send_json({'ok':False,'error':'نوحه پیدا نشد'},404)
+                DBDATA['chants'].remove(name)
+                DBDATA['chant_index']=DBDATA['chant_index']%max(1,len(DBDATA['chants']))
+                target=AUDIO/name
+                if target.exists(): target.unlink()
+                save_db(DBDATA); return self.send_json({'ok':True})
             if data.get('action')=='upload':
                 name=os.path.basename(str(data.get('name','')))
                 if Path(name).suffix.lower() not in ('.mp3','.wav','.m4a'):
@@ -514,24 +528,65 @@ class Users(Screen):
         except Exception as e: Popup(title=fa('خطا'),content=lbl(e,16)).open()
 
 class Chants(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت نوحه‌ها — ویژهٔ مدیر سامانه',22,True)); root.add_widget(btn('افزودن فایل نوحه',self.pick)); root.add_widget(lbl('نوحه‌ها در پوشهٔ اختصاصی سامانه ذخیره می‌شوند و ترتیب پخش آن‌ها هنگام ورود مدیریت می‌شود.',15)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self):
+        self.clear_widgets()
+        root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8))
+        root.add_widget(lbl('مدیریت نوحه‌ها — ویژهٔ مدیر سامانه',22,True))
+        root.add_widget(btn('افزودن فایل نوحه',self.pick))
+        root.add_widget(btn('به‌روزرسانی فهرست',self.load_chants))
+        self.list_box=BoxLayout(orientation='vertical',spacing=dp(5),size_hint_y=None)
+        self.list_box.bind(minimum_height=self.list_box.setter('height'))
+        scroll=ScrollView(); scroll.add_widget(self.list_box); root.add_widget(scroll)
+        root.add_widget(lbl('ترتیب این فهرست، ترتیب پخش نوحه‌ها هنگام ورود کاربران است.',13))
+        root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home')))
+        self.add_widget(root); self.load_chants()
+    def api(self,payload):
+        app=App.get_running_app()
+        req=urllib.request.Request(app.state['server_url']+'/api/chants',data=json.dumps(payload,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
+        result=json.loads(urllib.request.urlopen(req,timeout=15).read().decode('utf-8'))
+        if not result.get('ok'): raise Exception(result.get('error','درخواست ناموفق بود'))
+        return result
+    def load_chants(self,*a):
+        try:
+            names=self.api({'action':'list'}).get('chants',[])
+            self.chant_names=list(names); self.list_box.clear_widgets()
+            if not names: self.list_box.add_widget(lbl('هنوز نوحه‌ای بارگذاری نشده است',14)); return
+            for index,name in enumerate(names):
+                row=BoxLayout(size_hint_y=None,height=dp(48),spacing=dp(4))
+                row.add_widget(lbl(f'{index+1}. {name}',13))
+                row.add_widget(btn('بالا',lambda b,i=index:self.move_chant(i,-1),38))
+                row.add_widget(btn('پایین',lambda b,i=index:self.move_chant(i,1),38))
+                row.add_widget(btn('حذف',lambda b,n=name:self.delete_chant(n),38))
+                self.list_box.add_widget(row)
+        except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
+    def move_chant(self,index,delta):
+        target=index+delta
+        if target<0 or target>=len(self.chant_names): return
+        names=list(self.chant_names); names[index],names[target]=names[target],names[index]
+        try: self.api({'action':'reorder','chants':names}); self.load_chants()
+        except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
+    def delete_chant(self,name):
+        box=BoxLayout(orientation='vertical',padding=dp(8),spacing=dp(8))
+        box.add_widget(lbl('آیا از حذف این نوحه اطمینان دارید؟',14))
+        pop=Popup(title=fa('تأیید حذف'),content=box,size_hint=(.85,.32))
+        def confirm(*args):
+            try: self.api({'action':'delete','name':name}); pop.dismiss(); self.load_chants()
+            except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
+        box.add_widget(btn('حذف نوحه',confirm,42)); box.add_widget(btn('انصراف',lambda b:pop.dismiss(),40)); pop.open()
     def pick(self,*a):
-        fc=FileChooserListView(path='/storage/emulated/0/Download',filters=['*.mp3','*.wav','*.m4a']); box=BoxLayout(orientation='vertical'); box.add_widget(fc); box.add_widget(btn('انتخاب',lambda b:self.copy(fc.selection),48)); p=Popup(title=fa('انتخاب نوحه'),content=box,size_hint=(.95,.9)); self.pop=p; p.open()
+        start='/storage/emulated/0/Download' if os.path.isdir('/storage/emulated/0/Download') else str(Path.home())
+        fc=FileChooserListView(path=start,filters=['*.mp3','*.wav','*.m4a'])
+        box=BoxLayout(orientation='vertical'); box.add_widget(fc)
+        box.add_widget(btn('انتخاب',lambda b:self.copy(fc.selection),48))
+        p=Popup(title=fa('انتخاب نوحه'),content=box,size_hint=(.95,.9)); self.pop=p; p.open()
     def copy(self,sel):
         if not sel: return
         try:
             src=Path(sel[0])
             payload={'action':'upload','name':src.name,'content':base64.b64encode(src.read_bytes()).decode('ascii')}
-            app=App.get_running_app()
-            req=urllib.request.Request(app.state['server_url']+'/api/chants',
-                data=json.dumps(payload).encode(),
-                headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
-            result=json.loads(urllib.request.urlopen(req,timeout=20).read().decode('utf-8'))
-            if not result.get('ok'): raise Exception(result.get('error','بارگذاری ناموفق بود'))
-            self.pop.dismiss()
+            self.api(payload); self.pop.dismiss(); self.load_chants()
             Popup(title=fa('ثبت شد'),content=lbl(src.name+'\nفایل روی سرور ذخیره شد.',16),size_hint=(.85,.32)).open()
-        except Exception as e:
-            Popup(title=fa('خطا در بارگذاری'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
+        except Exception as e: Popup(title=fa('خطا در بارگذاری'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class Reports(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارش‌ها',24,True)); root.add_widget(btn('دریافت فایل Word',lambda b:self.export('docx'))); root.add_widget(btn('دریافت فایل PDF',lambda b:self.export('pdf'))); root.add_widget(btn('تهیهٔ کارت چاپی برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('ارسال آخرین کارت در پیام‌رسان‌ها',self.share_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
