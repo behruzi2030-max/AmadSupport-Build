@@ -8,7 +8,7 @@ version = 5.0.1
 requirements = python3,kivy==2.3.1,arabic-reshaper,python-bidi,reportlab,pillow,charset-normalizer
 orientation = portrait
 fullscreen = 0
-android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE,READ_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,READ_MEDIA_IMAGES
 android.api = 35
 android.minapi = 24
 android.archs = arm64-v8a
