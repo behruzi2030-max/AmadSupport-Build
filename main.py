@@ -786,6 +786,19 @@ class SplashBadge(Widget):
 
 
 class AmadApp(App):
+    def on_start(self):
+        try:
+            from kivy.utils import platform
+            if platform == 'android':
+                from android.permissions import request_permissions, Permission
+                permissions=[Permission.READ_EXTERNAL_STORAGE]
+                for permission_name in ('READ_MEDIA_AUDIO','READ_MEDIA_IMAGES'):
+                    permission=getattr(Permission,permission_name,None)
+                    if permission: permissions.append(permission)
+                request_permissions(permissions)
+        except Exception:
+            pass
+
     def build(self):
         self.title = 'سامانه آماد و پشتیبانی پایگاه شهید صیاد شیرازی'
         self.state={}
