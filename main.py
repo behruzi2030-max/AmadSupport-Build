@@ -1,4 +1,4 @@
-import os, json, threading, hashlib, secrets, socket, urllib.request, urllib.parse, time, html, webbrowser, base64
+import os, json, threading, hashlib, secrets, socket, urllib.request, urllib.parse, time, html, webbrowser, base64, hmac, re
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -35,7 +35,11 @@ def now(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def hashpw(p, salt=None):
     salt = salt or secrets.token_hex(16)
     return salt, hashlib.pbkdf2_hmac('sha256', p.encode(), salt.encode(), 120000).hex()
-def verify(p, salt, digest): return hashpw(p, salt)[1] == digest
+def verify(p, salt, digest): return hmac.compare_digest(hashpw(p, salt)[1], digest)
+
+def valid_password(password): return isinstance(password, str) and len(password) >= 10
+
+def valid_username(username): return bool(re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{2,31}', str(username or '')))
 
 def load_db():
     if DB.exists():
@@ -65,7 +69,7 @@ class APIHandler(BaseHTTPRequestHandler):
         b=json.dumps(obj, ensure_ascii=False).encode(); self.send_response(code); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(b))); self.end_headers(); self.wfile.write(b)
     def read_json(self):
         n=int(self.headers.get('Content-Length','0'))
-        if n > 1_000_000: raise ValueError('request too large')
+        if n > 8_000_000: raise ValueError('request too large')
         return json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
     def session_user(self):
         token=self.headers.get('Authorization','').strip()
@@ -107,24 +111,47 @@ class APIHandler(BaseHTTPRequestHandler):
                 track=DBDATA['chants'][DBDATA['chant_index'] % len(DBDATA['chants'])]; DBDATA['chant_index']=(DBDATA['chant_index']+1)%len(DBDATA['chants']); save_db(DBDATA)
             token=secrets.token_urlsafe(32)
             SESSIONS[token]={'username':user['username'],'name':user['name'],'role':user['role']}
-            return self.send_json({'ok':True,'name':user['name'],'role':user['role'],'token':token,'chant':track,'time':now()})
+            return self.send_json({'ok':True,'name':user['name'],'role':user['role'],'token':token,'chant':track,'time':now(),'must_change_password':bool(user.get('must_change_password', user['username']=='admin' and user.get('password')==hashpw('Admin1234',user['salt'])[1]))})
+        if self.path=='/api/change_password':
+            user=self.require_user()
+            if not user: return
+            password=data.get('password','')
+            if not valid_password(password): return self.send_json({'ok':False,'error':'گذرواژه باید دست‌کم ۱۰ نویسه داشته باشد'},400)
+            account=next((x for x in DBDATA['users'] if x['username']==user['username']),None)
+            if not account: return self.send_json({'ok':False,'error':'کاربر یافت نشد'},404)
+            salt,digest=hashpw(password); account.update(salt=salt,password=digest,must_change_password=False); save_db(DBDATA)
+            return self.send_json({'ok':True})
         if self.path=='/api/add_log':
             if not self.require_user(): return
-            typ=data.get('type'); entry=data.get('entry',{}); entry['timestamp']=now();
-            if typ not in ('repairs','equipment'): return self.send_json({'ok':False},400)
-            DBDATA[typ].append(entry); save_db(DBDATA); return self.send_json({'ok':True})
+            typ=data.get('type'); entry=data.get('entry',{})
+            if typ not in ('repairs','equipment') or not isinstance(entry,dict): return self.send_json({'ok':False},400)
+            if typ=='equipment' and data.get('photo_data'):
+                try:
+                    raw=base64.b64decode(data['photo_data'],validate=True)
+                    if len(raw)>5*1024*1024: return self.send_json({'ok':False,'error':'حجم تصویر بیش از حد مجاز است'},400)
+                    ext=Path(str(data.get('photo_name',''))).suffix.lower()
+                    if ext not in ('.png','.jpg','.jpeg','.webp'): return self.send_json({'ok':False,'error':'قالب تصویر مجاز نیست'},400)
+                    photo_name='handover_'+secrets.token_hex(12)+ext
+                    photo_path=REPORTS/photo_name; photo_path.write_bytes(raw)
+                    entry['photo_path']=str(photo_path)
+                except Exception: return self.send_json({'ok':False,'error':'بارگذاری تصویر ناموفق بود'},400)
+            entry.pop('photo_data',None)
+            entry['timestamp']=now()
+            DBDATA[typ].append(entry); save_db(DBDATA); return self.send_json({'ok':True,'timestamp':entry['timestamp']})
         if self.path=='/api/users':
             if not self.require_user(admin=True): return
             if data.get('action')=='list': return self.send_json({'ok':True,'users':[{k:v for k,v in u.items() if k not in ('salt','password')} for u in DBDATA['users']]})
             if data.get('action') in ('add','reset'):
                 username=data.get('username','').strip(); password=data.get('password','')
+                if not valid_username(username): return self.send_json({'ok':False,'error':'نام کاربری باید لاتین و ۳ تا ۳۲ نویسه باشد'},400)
+                if not valid_password(password): return self.send_json({'ok':False,'error':'گذرواژه باید دست‌کم ۱۰ نویسه داشته باشد'},400)
                 if data['action']=='add' and any(u['username']==username for u in DBDATA['users']): return self.send_json({'ok':False,'error':'این نام کاربری پیش‌تر ثبت شده است'},400)
                 salt,digest=hashpw(password)
                 if data['action']=='reset':
                     u=next((x for x in DBDATA['users'] if x['username']==username),None)
                     if not u: return self.send_json({'ok':False,'error':'کاربر یافت نشد'},404)
-                    u.update(salt=salt,password=digest)
-                else: DBDATA['users'].append({'username':username,'name':data.get('name',username),'role':data.get('role','user'),'salt':salt,'password':digest,'active':True})
+                    u.update(salt=salt,password=digest,must_change_password=True)
+                else: DBDATA['users'].append({'username':username,'name':data.get('name',username),'role':data.get('role','user'),'salt':salt,'password':digest,'active':True,'must_change_password':True})
                 save_db(DBDATA); return self.send_json({'ok':True})
         if self.path=='/api/reports':
             if not self.require_user(): return
