@@ -1,5 +1,6 @@
 kivy==2.3.1
 arabic-reshaper==3.0.0
 python-bidi==0.6.6
-reportlab==4.2.5
+reportlab==5.1.0
 pillow==11.0.0
+charset-normalizer>=3.0.0
