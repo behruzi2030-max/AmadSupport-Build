@@ -81,7 +81,7 @@ class APIHandler(BaseHTTPRequestHandler):
             return None
         return user
     def do_GET(self):
-        if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0'})
+        if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.1'})
         if self.path.startswith('/audio/'):
             name=urllib.parse.unquote(self.path.split('/audio/',1)[1]); f=AUDIO / os.path.basename(name)
             if not f.exists(): return self.send_json({'ok':False,'error':'not found'},404)
@@ -178,9 +178,15 @@ class Login(Screen):
             if r.get('chant'): App.get_running_app().play_chant(r['chant'])
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),16),size_hint=(.9,.35)).open()
     def server_mode(self,*a):
-        if SERVER is None: ServerThread().start()
-        token=secrets.token_urlsafe(32); SESSIONS[token]={'username':'admin','name':'مدیر سامانه','role':'admin'}
-        App.get_running_app().state.update(user={'name':'مدیر سامانه','role':'admin','token':token},server_url='http://127.0.0.1:8765'); self.manager.current='home'
+        # Starting the local server must never grant an administrator session.
+        # The operator must authenticate through the same login endpoint as every other user.
+        if SERVER is None:
+            ServerThread().start()
+            time.sleep(0.15)
+        self.url.text='http://127.0.0.1:8765'
+        Popup(title=fa('سرور محلی فعال شد'),
+              content=lbl('سرور این گوشی فعال شد. برای ورود، نام کاربری و رمز عبور معتبر مدیر را وارد کنید. راه‌اندازی سرور به‌تنهایی دسترسی مدیریتی ایجاد نمی‌کند.',15),
+              size_hint=(.92,.38)).open()
 
 class Home(Screen):
     def on_enter(self):
