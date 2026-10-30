@@ -118,7 +118,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if data.get('action')=='list': return self.send_json({'ok':True,'users':[{k:v for k,v in u.items() if k not in ('salt','password')} for u in DBDATA['users']]})
             if data.get('action') in ('add','reset'):
                 username=data.get('username','').strip(); password=data.get('password','')
-                if data['action']=='add' and any(u['username']==username for u in DBDATA['users']): return self.send_json({'ok':False,'error':'نام کاربری تکراری'},400)
+                if data['action']=='add' and any(u['username']==username for u in DBDATA['users']): return self.send_json({'ok':False,'error':'این نام کاربری پیش‌تر ثبت شده است'},400)
                 salt,digest=hashpw(password)
                 if data['action']=='reset':
                     u=next((x for x in DBDATA['users'] if x['username']==username),None)
@@ -135,9 +135,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if data.get('action')=='upload':
                 name=os.path.basename(str(data.get('name','')))
                 if Path(name).suffix.lower() not in ('.mp3','.wav','.m4a'):
-                    return self.send_json({'ok':False,'error':'فرمت فایل صوتی مجاز نیست'},400)
+                    return self.send_json({'ok':False,'error':'قالب فایل صوتی مجاز نیست'},400)
                 try: raw=base64.b64decode(data.get('content',''),validate=True)
-                except Exception: return self.send_json({'ok':False,'error':'فایل ارسالی معتبر نیست'},400)
+                except Exception: return self.send_json({'ok':False,'error':'فایل فرستاده‌شده معتبر نیست'},400)
                 if not raw or len(raw)>20*1024*1024:
                     return self.send_json({'ok':False,'error':'حجم فایل باید کمتر از ۲۰ مگابایت باشد'},400)
                 dst=AUDIO/name
@@ -180,13 +180,13 @@ class Login(Screen):
         root=BoxLayout(orientation='vertical',padding=dp(18),spacing=dp(12))
         root.add_widget(lbl('سامانه آماد و پشتیبانی',30,True))
         root.add_widget(lbl('پایگاه شهید صیاد شیرازی',21))
-        root.add_widget(lbl('بسم الله الرحمن الرحیم\nبسیج لشکر مخلص خداست (امام خمینی ره)\nبسیجی یعنی علی که تمام وجودش وقف اسلام بود (امام شهید ره)',18))
-        self.user=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربری لاتین'),multiline=False)
-        self.pw=TextInput(hint_text=fa('متن خود را بنویسید: رمز عبور'),password=True,multiline=False)
-        self.url=TextInput(text='http://127.0.0.1:8765',hint_text=fa('متن خود را بنویسید: آدرس سرور'),multiline=False)
+        root.add_widget(lbl('بسم‌الله الرحمن الرحیم\nبسیج، لشکر مخلص خداست (امام خمینی، ره)\nبسیجی یعنی علی که تمام وجودش وقف اسلام بود (امام شهید، ره)',18))
+        self.user=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False)
+        self.pw=TextInput(hint_text=fa('گذرواژه را وارد کنید'),password=True,multiline=False)
+        self.url=TextInput(text='http://127.0.0.1:8765',hint_text=fa('نشانی سرور را وارد کنید'),multiline=False)
         root.add_widget(self.user); root.add_widget(self.pw); root.add_widget(self.url)
-        root.add_widget(btn('ورود به سرور',self.login))
-        root.add_widget(btn('اجرای این گوشی به عنوان سرور',self.server_mode))
+        root.add_widget(btn('ورود به سامانه',self.login))
+        root.add_widget(btn('راه‌اندازی این تلفن همراه به‌عنوان کارساز',self.server_mode))
         self.add_widget(root)
     def login(self,*a):
         try:
@@ -203,7 +203,7 @@ class Login(Screen):
             time.sleep(0.15)
         self.url.text='http://127.0.0.1:8765'
         Popup(title=fa('سرور محلی فعال شد'),
-              content=lbl('سرور این گوشی فعال شد. برای ورود، نام کاربری و رمز عبور معتبر مدیر را وارد کنید. راه‌اندازی سرور به‌تنهایی دسترسی مدیریتی ایجاد نمی‌کند.',15),
+              content=lbl('کارساز این تلفن همراه فعال شد. برای ورود، نام کاربری و رمز عبور معتبر مدیر را وارد کنید. راه‌اندازی سرور به‌تنهایی دسترسی مدیریتی ایجاد نمی‌کند.',15),
               size_hint=(.92,.38)).open()
 
 class Home(Screen):
@@ -216,8 +216,8 @@ class Home(Screen):
         grid=GridLayout(cols=2,spacing=dp(8),size_hint_y=None)
         grid.bind(minimum_height=grid.setter('height'))
         user=App.get_running_app().state.get('user',{})
-        items=[('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارشات','reports')]
-        if user.get('role')=='admin': items += [('مدیریت کاربران','users'),('مدیریت نوحه (فقط مدیر)','chants'),('تنظیمات سرور','server')]
+        items=[('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارش‌ها','reports')]
+        if user.get('role')=='admin': items += [('مدیریت کاربران','users'),('مدیریت نوحه‌ها (ویژهٔ مدیر)','chants'),('تنظیمات کارساز','server')]
         for t,screen in items:
             grid.add_widget(btn(t,lambda b,s=screen:self.go(s),60))
         root.add_widget(grid)
@@ -239,7 +239,7 @@ class Home(Screen):
 
 class SimpleLog(Screen):
     typ='repairs'; title=''
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl(self.title,24,True)); self.person=TextInput(hint_text=fa('متن خود را بنویسید: نام / واحد'),multiline=False); self.desc=TextInput(hint_text=fa('متن خود را بنویسید: شرح'),multiline=False); root.add_widget(self.person); root.add_widget(self.desc); root.add_widget(btn('ثبت رویداد همراه با تاریخ و ساعت دقیق',self.save)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl(self.title,24,True)); self.person=TextInput(hint_text=fa('نام یا واحد مربوط را وارد کنید'),multiline=False); self.desc=TextInput(hint_text=fa('شرح رویداد را وارد کنید'),multiline=False); root.add_widget(self.person); root.add_widget(self.desc); root.add_widget(btn('ثبت رویداد با تاریخ و ساعت دقیق',self.save)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def save(self,*a):
         try:
             data={'type':self.typ,'entry':{'person':self.person.text,'description':self.desc.text}}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/add_log',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); urllib.request.urlopen(req,timeout=5); Popup(title=fa('ثبت شد'),content=lbl(now(),18),size_hint=(.8,.3)).open(); self.person.text=''; self.desc.text=''
@@ -253,20 +253,20 @@ class EquipmentScreen(Screen):
         scroll=ScrollView()
         form=BoxLayout(orientation='vertical',padding=dp(4),spacing=dp(7),size_hint_y=None)
         form.bind(minimum_height=form.setter('height'))
-        self.first=TextInput(hint_text=fa('متن خود را بنویسید: نام'),multiline=False,size_hint_y=None,height=dp(46))
-        self.last=TextInput(hint_text=fa('متن خود را بنویسید: نام خانوادگی'),multiline=False,size_hint_y=None,height=dp(46))
-        self.father=TextInput(hint_text=fa('متن خود را بنویسید: نام پدر'),multiline=False,size_hint_y=None,height=dp(46))
-        self.national=TextInput(hint_text=fa('متن خود را بنویسید: کد ملی'),multiline=False,size_hint_y=None,height=dp(46))
-        self.phone=TextInput(hint_text=fa('متن خود را بنویسید: شماره تلفن'),multiline=False,size_hint_y=None,height=dp(46))
-        self.equipment=TextInput(hint_text=fa('متن خود را بنویسید: مشخصات تجهیزات تحویلی، تعداد و کد'),multiline=True,size_hint_y=None,height=dp(90))
-        self.signature=TextInput(hint_text=fa('متن خود را بنویسید: نام/توضیح امضای دریافت‌کننده (اختیاری)'),multiline=False,size_hint_y=None,height=dp(46))
+        self.first=TextInput(hint_text=fa('نام را وارد کنید'),multiline=False,size_hint_y=None,height=dp(46))
+        self.last=TextInput(hint_text=fa('نام خانوادگی را وارد کنید'),multiline=False,size_hint_y=None,height=dp(46))
+        self.father=TextInput(hint_text=fa('نام پدر را وارد کنید'),multiline=False,size_hint_y=None,height=dp(46))
+        self.national=TextInput(hint_text=fa('کد ملی را وارد کنید'),multiline=False,size_hint_y=None,height=dp(46))
+        self.phone=TextInput(hint_text=fa('شمارهٔ تلفن را وارد کنید'),multiline=False,size_hint_y=None,height=dp(46))
+        self.equipment=TextInput(hint_text=fa('مشخصات تجهیزات، تعداد و کد آن‌ها را وارد کنید'),multiline=True,size_hint_y=None,height=dp(90))
+        self.signature=TextInput(hint_text=fa('نام یا توضیح امضای تحویل‌گیرنده (اختیاری)'),multiline=False,size_hint_y=None,height=dp(46))
         for field in (self.first,self.last,self.father,self.national,self.phone,self.equipment,self.signature):
             form.add_widget(field)
-        form.add_widget(btn('الحاق عکس مأمور',self.pick_photo,46))
-        self.photo_label=lbl('عکسی انتخاب نشده است',14)
+        form.add_widget(btn('افزودن تصویر مأمور',self.pick_photo,46))
+        self.photo_label=lbl('تصویری انتخاب نشده است',14)
         form.add_widget(self.photo_label)
         scroll.add_widget(form); root.add_widget(scroll)
-        root.add_widget(btn('ثبت اطلاعات و آماده‌سازی کارت چاپ',self.save_handover,52))
+        root.add_widget(btn('ثبت اطلاعات و آماده‌سازی کارت چاپی',self.save_handover,52))
         root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'),44))
         self.add_widget(root)
         self.photo_path=''
@@ -276,13 +276,13 @@ class EquipmentScreen(Screen):
         fc=FileChooserListView(path=start,filters=['*.png','*.jpg','*.jpeg','*.webp'])
         box=BoxLayout(orientation='vertical',spacing=dp(6))
         box.add_widget(fc)
-        pop=Popup(title=fa('انتخاب عکس مأمور'),content=box,size_hint=(.95,.9))
+        pop=Popup(title=fa('انتخاب تصویر مأمور'),content=box,size_hint=(.95,.9))
         box.add_widget(btn('انتخاب عکس',lambda b:self._copy_photo(fc.selection,pop),44))
         self.photo_popup=pop; pop.open()
 
     def _copy_photo(self,selection,popup):
         if not selection:
-            Popup(title=fa('توجه'),content=lbl('ابتدا یک عکس انتخاب کنید',15),size_hint=(.8,.3)).open()
+            Popup(title=fa('توجه'),content=lbl('ابتدا یک تصویر انتخاب کنید',15),size_hint=(.8,.3)).open()
             return
         src=Path(selection[0])
         safe_name='officer_'+str(int(time.time()))+src.suffix.lower()
@@ -290,7 +290,7 @@ class EquipmentScreen(Screen):
         try:
             dst.write_bytes(src.read_bytes())
             self.photo_path=str(dst)
-            self.photo_label.text=fa('عکس پیوست شد: '+src.name)
+            self.photo_label.text=fa('تصویر پیوست شد: '+src.name)
             popup.dismiss()
         except Exception as e:
             Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
@@ -318,30 +318,30 @@ class EquipmentScreen(Screen):
                 DBDATA.setdefault('equipment',[]).append(entry); save_db(DBDATA)
             card_path=make_handover_card(entry)
             notice=BoxLayout(orientation='vertical',padding=dp(10),spacing=dp(8))
-            notice.add_widget(lbl('اطلاعات ثبت شد. کارت برای چاپ آماده است. برای ارسال مشخصات به پیام‌رسان‌های نصب‌شده، اشتراک‌گذاری را انتخاب کنید.',14))
-            notice.add_widget(btn('اشتراک‌گذاری در ایتا، روبیکا، سروش یا بله',lambda b:share_handover_entry(entry),48))
+            notice.add_widget(lbl('اطلاعات ثبت شد. کارت برای چاپ آماده است. برای فرستادن مشخصات به پیام‌رسان‌های نصب‌شده، گزینهٔ ارسال را انتخاب کنید.',14))
+            notice.add_widget(btn('ارسال از طریق ایتا، روبیکا، سروش یا بله',lambda b:share_handover_entry(entry),48))
             notice.add_widget(btn('بستن',lambda b:result_popup.dismiss(),42))
             result_popup=Popup(title=fa('ثبت و آماده‌سازی کارت'),content=notice,size_hint=(.95,.48))
             result_popup.open()
             for field in (self.first,self.last,self.father,self.national,self.phone,self.equipment,self.signature):
                 field.text=''
-            self.photo_path=''; self.photo_label.text=fa('عکسی انتخاب نشده است')
+            self.photo_path=''; self.photo_label.text=fa('تصویری انتخاب نشده است')
         except Exception as e:
             Popup(title=fa('خطا در ثبت'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class Users(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربری لاتین'),multiline=False); self.n=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربر'),multiline=False); self.p=TextInput(hint_text=fa('متن خود را بنویسید: رمز عبور جدید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی رمز کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False); self.n=TextInput(hint_text=fa('متن خود را بنویسید: نام کاربر'),multiline=False); self.p=TextInput(hint_text=fa('گذرواژهٔ جدید را وارد کنید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def call(self,action):
         data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
     def add(self,*a):
         try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl('کاربر ایجاد شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
         except Exception as e: Popup(title='Error',content=lbl(e,16)).open()
     def reset(self,*a):
-        try: r=self.call('reset'); Popup(title=fa('نتیجه'),content=lbl('رمز بازنشانی شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
+        try: r=self.call('reset'); Popup(title=fa('نتیجه'),content=lbl('گذرواژه بازنشانی شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
         except Exception as e: Popup(title='Error',content=lbl(e,16)).open()
 
 class Chants(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت نوحه — فقط مدیر سامانه',22,True)); root.add_widget(btn('افزودن فایل نوحه',self.pick)); root.add_widget(lbl('نوحه‌ها در پوشه خصوصی سامانه ذخیره و ترتیب پخش ورودها مدیریت می‌شود.',15)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت نوحه‌ها — ویژهٔ مدیر سامانه',22,True)); root.add_widget(btn('افزودن فایل نوحه',self.pick)); root.add_widget(lbl('نوحه‌ها در پوشهٔ اختصاصی سامانه ذخیره می‌شوند و ترتیب پخش آن‌ها هنگام ورود مدیریت می‌شود.',15)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def pick(self,*a):
         fc=FileChooserListView(path='/storage/emulated/0/Download',filters=['*.mp3','*.wav','*.m4a']); box=BoxLayout(orientation='vertical'); box.add_widget(fc); box.add_widget(btn('انتخاب',lambda b:self.copy(fc.selection),48)); p=Popup(title=fa('انتخاب نوحه'),content=box,size_hint=(.95,.9)); self.pop=p; p.open()
     def copy(self,sel):
@@ -361,7 +361,7 @@ class Chants(Screen):
             Popup(title=fa('خطا در بارگذاری'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class Reports(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارشات',24,True)); root.add_widget(btn('خروجی Word',lambda b:self.export('docx'))); root.add_widget(btn('خروجی PDF',lambda b:self.export('pdf'))); root.add_widget(btn('ساخت کارت چاپ برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('اشتراک‌گذاری آخرین کارت در پیام‌رسان‌ها',self.share_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارش‌ها',24,True)); root.add_widget(btn('دریافت فایل Word',lambda b:self.export('docx'))); root.add_widget(btn('دریافت فایل PDF',lambda b:self.export('pdf'))); root.add_widget(btn('تهیهٔ کارت چاپی برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('ارسال آخرین کارت در پیام‌رسان‌ها',self.share_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def get_records(self):
         app=App.get_running_app()
         req=urllib.request.Request(app.state['server_url']+'/api/reports',data=b'{}',
@@ -374,18 +374,18 @@ class Reports(Screen):
         except Exception as e:
             Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.35)).open(); return
         if not records:
-            Popup(title=fa('گزارشات'),content=lbl('هنوز اطلاعات تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
+            Popup(title=fa('گزارش‌ها'),content=lbl('هنوز هنوز اطلاعاتی دربارهٔ تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
         path=make_handover_card(records[-1])
         try: webbrowser.open(Path(path).resolve().as_uri())
         except Exception: pass
-        Popup(title=fa('کارت آماده چاپ'),content=lbl('کارت HTML در این مسیر ذخیره شد:\n'+str(path)+'\nآن را در مرورگر باز و چاپ کنید.',14),size_hint=(.95,.45)).open()
+        Popup(title=fa('کارت آمادهٔ چاپ'),content=lbl('کارت HTML در این مسیر ذخیره شد:\n'+str(path)+'\nآن را در مرورگر باز و چاپ کنید.',14),size_hint=(.95,.45)).open()
 
     def share_latest_card(self,*a):
         try: records=self.get_records().get('equipment',[])
         except Exception as e:
             Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.35)).open(); return
         if not records:
-            Popup(title=fa('گزارشات'),content=lbl('هنوز اطلاعات تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
+            Popup(title=fa('گزارش‌ها'),content=lbl('هنوز هنوز اطلاعاتی دربارهٔ تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
         share_handover_entry(records[-1])
 
     def export(self,kind):
@@ -399,7 +399,7 @@ class Reports(Screen):
             Popup(title=fa('خطا در تهیه گزارش'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class ServerScreen(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('سرور این گوشی',24,True)); root.add_widget(lbl('پورت: 8765',18)); root.add_widget(lbl('\n'.join('آدرس: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه گوشی دیگر می‌توانند با همین آدرس و روی یک شبکه به سرور وصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('کارساز این تلفن همراه',24,True)); root.add_widget(lbl('پورت: 8765',18)); root.add_widget(lbl('\n'.join('آدرس: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه گوشی دیگر می‌توانند با همین آدرس و روی یک شبکه به سرور وصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
 
 def share_handover_entry(entry):
     """Open Android's native share chooser with the handover-card details as text."""
@@ -438,7 +438,7 @@ def make_handover_card(entry):
     photo_html=''
     if photo and Path(photo).exists():
         photo_uri=Path(photo).resolve().as_uri()
-        photo_html=f'<img class="photo" src="{html.escape(photo_uri, quote=True)}" alt="عکس مأمور">'
+        photo_html=f'<img class="photo" src="{html.escape(photo_uri, quote=True)}" alt="تصویر مأمور">'
     def value(key):
         return html.escape(str(entry.get(key,'') or '—'))
     timestamp=value('timestamp')
@@ -488,7 +488,7 @@ def make_pdf(path,text):
     from xml.sax.saxutils import escape
     font_path=FONT if Path(FONT).exists() else FONT_B
     if not Path(font_path).exists():
-        raise RuntimeError('فونت فارسی برای ساخت PDF پیدا نشد')
+        raise RuntimeError('قلم فارسی برای ساخت PDF پیدا نشد')
     if 'NotoFAReport' not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont('NotoFAReport',font_path))
     style=ParagraphStyle('Persian',fontName='NotoFAReport',fontSize=9,leading=16,
