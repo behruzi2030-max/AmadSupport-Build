@@ -306,7 +306,7 @@ class Home(Screen):
         grid=GridLayout(cols=2,spacing=dp(8),size_hint_y=None)
         grid.bind(minimum_height=grid.setter('height'))
         user=App.get_running_app().state.get('user',{})
-        items=[('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارش‌ها','reports')]
+        items=[('تعمیرات','repairs'),('تحویل و عودت تجهیزات','equipment'),('گزارش‌ها','reports'),('تغییر گذرواژه','change_password')]
         if user.get('role')=='admin': items += [('مدیریت کاربران','users'),('مدیریت نوحه‌ها (ویژهٔ مدیر)','chants'),('تنظیمات سرور','server')]
         for t,screen in items:
             grid.add_widget(btn(t,lambda b,s=screen:self.go(s),60))
@@ -430,10 +430,47 @@ class EquipmentScreen(Screen):
         except Exception as e:
             Popup(title=fa('خطا در ثبت'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
+class ChangePassword(Screen):
+    def on_enter(self):
+        self.clear_widgets()
+        root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(9))
+        root.add_widget(lbl('تغییر گذرواژه',24,True))
+        self.new=TextInput(hint_text=fa('گذرواژهٔ تازه (دست‌کم ۱۰ نویسه)'),password=True,multiline=False)
+        self.confirm=TextInput(hint_text=fa('تکرار گذرواژهٔ تازه'),password=True,multiline=False)
+        root.add_widget(self.new); root.add_widget(self.confirm)
+        root.add_widget(btn('ثبت گذرواژهٔ تازه',self.save)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home')))
+        self.add_widget(root)
+    def save(self,*a):
+        if len(self.new.text)<10 or self.new.text!=self.confirm.text:
+            Popup(title=fa('بررسی گذرواژه'),content=lbl('گذرواژه باید دست‌کم ۱۰ نویسه داشته باشد و دو ورودی یکسان باشند.',14),size_hint=(.9,.3)).open(); return
+        try:
+            app=App.get_running_app(); payload=json.dumps({'password':self.new.text}).encode()
+            req=urllib.request.Request(app.state['server_url']+'/api/change_password',data=payload,headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state['user']['token']})
+            result=json.loads(urllib.request.urlopen(req,timeout=8).read().decode('utf-8'))
+            if not result.get('ok'): raise Exception(result.get('error','تغییر گذرواژه ناموفق بود'))
+            Popup(title=fa('انجام شد'),content=lbl('گذرواژه با موفقیت تغییر کرد.',14),size_hint=(.8,.3)).open()
+            self.new.text=''; self.confirm.text=''; app.state['user']['must_change_password']=False
+        except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
+
+
 class Users(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False); self.n=TextInput(hint_text=fa('نام و نام خانوادگی کاربر را وارد کنید'),multiline=False); self.p=TextInput(hint_text=fa('گذرواژهٔ جدید را وارد کنید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False); self.n=TextInput(hint_text=fa('نام و نام خانوادگی کاربر را وارد کنید'),multiline=False); self.p=TextInput(hint_text=fa('گذرواژهٔ جدید را وارد کنید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset)); root.add_widget(btn('نمایش فهرست کاربران',self.list_users)); self.user_list=lbl('',14); root.add_widget(self.user_list); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
     def call(self,action):
         data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
+    def list_users(self,*a):
+        try:
+            data={'action':'list'}
+            app=App.get_running_app()
+            req=urllib.request.Request(app.state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
+            result=json.loads(urllib.request.urlopen(req,timeout=8).read().decode('utf-8'))
+            if not result.get('ok'): raise Exception(result.get('error','دریافت فهرست کاربران ناموفق بود'))
+            rows=[]
+            for user in result.get('users',[]):
+                status='فعال' if user.get('active',True) else 'غیرفعال'
+                role='مدیر' if user.get('role')=='admin' else 'کاربر'
+                rows.append(f"{user.get('username','')} — {user.get('name','')} — {role} — {status}")
+            self.user_list.text='\n'.join(rows) if rows else 'کاربری ثبت نشده است'
+        except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
     def add(self,*a):
         try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl('کاربر ایجاد شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
         except Exception as e: Popup(title=fa('خطا'),content=lbl(e,16)).open()
@@ -636,7 +673,7 @@ class AmadApp(App):
         sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home'))
         sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'
         sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports'))
-        sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server'))
+        sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); sm.add_widget(ChangePassword(name='change_password'))
         self._main_root = sm
 
         splash = BoxLayout(orientation='vertical', padding=dp(28), spacing=dp(18))
