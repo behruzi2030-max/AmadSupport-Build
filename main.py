@@ -219,9 +219,31 @@ class Login(Screen):
         try:
             data=json.dumps({'username':self.user.text.strip(),'password':self.pw.text}).encode(); req=urllib.request.Request(self.url.text.rstrip('/')+'/api/login',data=data,headers={'Content-Type':'application/json'}); r=json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
             if not r.get('ok'): raise Exception(r.get('error','خطا'))
-            App.get_running_app().state.update(user=r,server_url=self.url.text.rstrip('/')); self.manager.current='home'
-            if r.get('chant'): App.get_running_app().play_chant(r['chant'])
+            App.get_running_app().state.update(user=r,server_url=self.url.text.rstrip('/'))
+            if r.get('must_change_password'):
+                self.prompt_password_change()
+            else:
+                self.manager.current='home'
+                if r.get('chant'): App.get_running_app().play_chant(r['chant'])
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),16),size_hint=(.9,.35)).open()
+    def prompt_password_change(self):
+        box=BoxLayout(orientation='vertical',padding=dp(10),spacing=dp(8))
+        new=TextInput(hint_text=fa('گذرواژهٔ تازه (دست‌کم ۱۰ نویسه)'),password=True,multiline=False)
+        confirm=TextInput(hint_text=fa('تکرار گذرواژهٔ تازه'),password=True,multiline=False)
+        box.add_widget(lbl('برای ادامه، گذرواژهٔ اولیه را تغییر دهید.',15)); box.add_widget(new); box.add_widget(confirm)
+        pop=Popup(title=fa('تغییر اجباری گذرواژه'),content=box,size_hint=(.9,.48),auto_dismiss=False)
+        def submit(*args):
+            if len(new.text)<10 or new.text!=confirm.text:
+                Popup(title=fa('بررسی گذرواژه'),content=lbl('گذرواژه باید دست‌کم ۱۰ نویسه داشته باشد و دو ورودی یکسان باشند.',14),size_hint=(.9,.3)).open(); return
+            try:
+                app=App.get_running_app(); payload=json.dumps({'password':new.text}).encode()
+                req=urllib.request.Request(app.state['server_url']+'/api/change_password',data=payload,headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state['user']['token']})
+                result=json.loads(urllib.request.urlopen(req,timeout=8).read().decode('utf-8'))
+                if not result.get('ok'): raise Exception(result.get('error','تغییر گذرواژه ناموفق بود'))
+                pop.dismiss(); app.state['user']['must_change_password']=False; self.manager.current='home'
+                if app.state['user'].get('chant'): app.play_chant(app.state['user']['chant'])
+            except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
+        box.add_widget(btn('ثبت گذرواژهٔ تازه',submit,48)); pop.open()
     def server_mode(self,*a):
         # Starting the local server must never grant an administrator session.
         # The operator must authenticate through the same login endpoint as every other user.
@@ -293,7 +315,8 @@ class EquipmentScreen(Screen):
         self.photo_label=lbl('تصویری انتخاب نشده است',14)
         form.add_widget(self.photo_label)
         scroll.add_widget(form); root.add_widget(scroll)
-        root.add_widget(btn('ثبت اطلاعات و آماده‌سازی کارت چاپی',self.save_handover,52))
+        root.add_widget(btn('ثبت تحویل تجهیزات و آماده‌سازی کارت',lambda b:self.save_handover('تحویل تجهیزات'),50))
+        root.add_widget(btn('ثبت عودت تجهیزات و آماده‌سازی کارت',lambda b:self.save_handover('عودت تجهیزات'),50))
         root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'),44))
         self.add_widget(root)
         self.photo_path=''
@@ -322,7 +345,7 @@ class EquipmentScreen(Screen):
         except Exception as e:
             Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
 
-    def save_handover(self,*a):
+    def save_handover(self,record_type='تحویل تجهیزات'):
         first=self.first.text.strip(); last=self.last.text.strip()
         equipment=self.equipment.text.strip()
         if not first or not last or not equipment:
@@ -332,17 +355,20 @@ class EquipmentScreen(Screen):
             'first_name':first,'last_name':last,'father_name':self.father.text.strip(),
             'national_id':self.national.text.strip(),'phone':self.phone.text.strip(),
             'equipment_details':equipment,'signature':self.signature.text.strip(),
-            'photo_path':self.photo_path,'timestamp':now(),'record_type':'تحویل تجهیزات'
+            'photo_path':self.photo_path,'timestamp':now(),'record_type':record_type
         }
         try:
-            data={'type':'equipment','entry':entry}
+            data={'type':'equipment','entry':dict(entry)}
+            if self.photo_path and Path(self.photo_path).exists():
+                data['photo_data']=base64.b64encode(Path(self.photo_path).read_bytes()).decode('ascii')
+                data['photo_name']=Path(self.photo_path).name
+                data['entry'].pop('photo_path',None)
             req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/add_log',
                 data=json.dumps(data,ensure_ascii=False).encode(),
                 headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')})
-            urllib.request.urlopen(req,timeout=5).read()
-            # Keep a local copy as well so the card can be prepared on this device.
-            if App.get_running_app().state.get('server_url') not in ('http://127.0.0.1:8765','http://localhost:8765'):
-                DBDATA.setdefault('equipment',[]).append(entry); save_db(DBDATA)
+            response=json.loads(urllib.request.urlopen(req,timeout=20).read().decode('utf-8'))
+            if not response.get('ok'): raise Exception(response.get('error','ثبت اطلاعات ناموفق بود'))
+            entry['timestamp']=response.get('timestamp',entry['timestamp'])
             card_path=make_handover_card(entry)
             notice=BoxLayout(orientation='vertical',padding=dp(10),spacing=dp(8))
             notice.add_widget(lbl('اطلاعات ثبت شد. کارت برای چاپ آماده است. برای فرستادن مشخصات به پیام‌رسان‌های نصب‌شده، گزینهٔ ارسال را انتخاب کنید.',14))
