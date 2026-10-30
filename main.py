@@ -1,4 +1,4 @@
-import os, json, threading, hashlib, secrets, socket, urllib.request, urllib.parse, time, html, webbrowser
+import os, json, threading, hashlib, secrets, socket, urllib.request, urllib.parse, time, html, webbrowser, base64
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -126,9 +126,25 @@ class APIHandler(BaseHTTPRequestHandler):
                     u.update(salt=salt,password=digest)
                 else: DBDATA['users'].append({'username':username,'name':data.get('name',username),'role':data.get('role','user'),'salt':salt,'password':digest,'active':True})
                 save_db(DBDATA); return self.send_json({'ok':True})
+        if self.path=='/api/reports':
+            if not self.require_user(): return
+            return self.send_json({'ok':True,'repairs':DBDATA.get('repairs',[]),'equipment':DBDATA.get('equipment',[])})
         if self.path=='/api/chants':
             if not self.require_user(admin=True): return
             if data.get('action')=='list': return self.send_json({'ok':True,'chants':DBDATA['chants']})
+            if data.get('action')=='upload':
+                name=os.path.basename(str(data.get('name','')))
+                if Path(name).suffix.lower() not in ('.mp3','.wav','.m4a'):
+                    return self.send_json({'ok':False,'error':'فرمت فایل صوتی مجاز نیست'},400)
+                try: raw=base64.b64decode(data.get('content',''),validate=True)
+                except Exception: return self.send_json({'ok':False,'error':'فایل ارسالی معتبر نیست'},400)
+                if not raw or len(raw)>20*1024*1024:
+                    return self.send_json({'ok':False,'error':'حجم فایل باید کمتر از ۲۰ مگابایت باشد'},400)
+                dst=AUDIO/name
+                dst.write_bytes(raw)
+                if name not in DBDATA['chants']: DBDATA['chants'].append(name)
+                save_db(DBDATA)
+                return self.send_json({'ok':True,'name':name})
         return self.send_json({'ok':False,'error':'unknown'},404)
 
 class ServerThread(threading.Thread):
@@ -330,12 +346,33 @@ class Chants(Screen):
         fc=FileChooserListView(path='/storage/emulated/0/Download',filters=['*.mp3','*.wav','*.m4a']); box=BoxLayout(orientation='vertical'); box.add_widget(fc); box.add_widget(btn('انتخاب',lambda b:self.copy(fc.selection),48)); p=Popup(title=fa('انتخاب نوحه'),content=box,size_hint=(.95,.9)); self.pop=p; p.open()
     def copy(self,sel):
         if not sel: return
-        src=Path(sel[0]); dst=AUDIO/src.name; dst.write_bytes(src.read_bytes()); DBDATA['chants'].append(src.name); save_db(DBDATA); self.pop.dismiss(); Popup(title=fa('ثبت شد'),content=lbl(src.name,16),size_hint=(.8,.3)).open()
+        try:
+            src=Path(sel[0])
+            payload={'action':'upload','name':src.name,'content':base64.b64encode(src.read_bytes()).decode('ascii')}
+            app=App.get_running_app()
+            req=urllib.request.Request(app.state['server_url']+'/api/chants',
+                data=json.dumps(payload).encode(),
+                headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
+            result=json.loads(urllib.request.urlopen(req,timeout=20).read().decode('utf-8'))
+            if not result.get('ok'): raise Exception(result.get('error','بارگذاری ناموفق بود'))
+            self.pop.dismiss()
+            Popup(title=fa('ثبت شد'),content=lbl(src.name+'\nفایل روی سرور ذخیره شد.',16),size_hint=(.85,.32)).open()
+        except Exception as e:
+            Popup(title=fa('خطا در بارگذاری'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class Reports(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('گزارشات',24,True)); root.add_widget(btn('خروجی Word',lambda b:self.export('docx'))); root.add_widget(btn('خروجی PDF',lambda b:self.export('pdf'))); root.add_widget(btn('ساخت کارت چاپ برای آخرین تحویل',self.export_latest_card)); root.add_widget(btn('اشتراک‌گذاری آخرین کارت در پیام‌رسان‌ها',self.share_latest_card)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def get_records(self):
+        app=App.get_running_app()
+        req=urllib.request.Request(app.state['server_url']+'/api/reports',data=b'{}',
+            headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state.get('user',{}).get('token','')})
+        result=json.loads(urllib.request.urlopen(req,timeout=10).read().decode('utf-8'))
+        if not result.get('ok'): raise Exception(result.get('error','دریافت گزارش ناموفق بود'))
+        return result
     def export_latest_card(self,*a):
-        records=DBDATA.get('equipment',[])
+        try: records=self.get_records().get('equipment',[])
+        except Exception as e:
+            Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.35)).open(); return
         if not records:
             Popup(title=fa('گزارشات'),content=lbl('هنوز اطلاعات تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
         path=make_handover_card(records[-1])
@@ -344,16 +381,22 @@ class Reports(Screen):
         Popup(title=fa('کارت آماده چاپ'),content=lbl('کارت HTML در این مسیر ذخیره شد:\n'+str(path)+'\nآن را در مرورگر باز و چاپ کنید.',14),size_hint=(.95,.45)).open()
 
     def share_latest_card(self,*a):
-        records=DBDATA.get('equipment',[])
+        try: records=self.get_records().get('equipment',[])
+        except Exception as e:
+            Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.35)).open(); return
         if not records:
             Popup(title=fa('گزارشات'),content=lbl('هنوز اطلاعات تحویل تجهیزات ثبت نشده است',15),size_hint=(.85,.3)).open(); return
         share_handover_entry(records[-1])
 
     def export(self,kind):
-        text='گزارش سامانه آماد و پشتیبانی\nتاریخ تولید: '+now()+'\n\nتعمیرات:\n'+json.dumps(DBDATA.get('repairs',[]),ensure_ascii=False,indent=2)+'\n\nتحویل و عودت تجهیزات:\n'+json.dumps(DBDATA.get('equipment',[]),ensure_ascii=False,indent=2)
-        if kind=='docx': path=REPORTS/'report.docx'; make_docx(path,text)
-        else: path=REPORTS/'report.pdf'; make_pdf(path,text)
-        Popup(title=fa('گزارش آماده شد'),content=lbl(str(path),14),size_hint=(.95,.4)).open()
+        try:
+            records=self.get_records()
+            text='گزارش سامانه آماد و پشتیبانی\nتاریخ تولید: '+now()+'\n\nتعمیرات:\n'+json.dumps(records.get('repairs',[]),ensure_ascii=False,indent=2)+'\n\nتحویل و عودت تجهیزات:\n'+json.dumps(records.get('equipment',[]),ensure_ascii=False,indent=2)
+            if kind=='docx': path=REPORTS/'report.docx'; make_docx(path,text)
+            else: path=REPORTS/'report.pdf'; make_pdf(path,text)
+            Popup(title=fa('گزارش آماده شد'),content=lbl(str(path),14),size_hint=(.95,.4)).open()
+        except Exception as e:
+            Popup(title=fa('خطا در تهیه گزارش'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class ServerScreen(Screen):
     def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('سرور این گوشی',24,True)); root.add_widget(lbl('پورت: 8765',18)); root.add_widget(lbl('\n'.join('آدرس: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه گوشی دیگر می‌توانند با همین آدرس و روی یک شبکه به سرور وصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
@@ -435,16 +478,31 @@ def make_docx(path,text):
         for n,c in files.items(): z.writestr(n,c)
 
 def make_pdf(path,text):
-    # Minimal valid PDF with Helvetica; Persian is stored as UTF-8 bytes and may not render in all viewers.
-    lines=text.replace('\r','').splitlines()
-    def pdf_escape(line):
-        encoded=line.encode('latin-1','replace').decode('latin-1')
-        return encoded.replace('\\\\','\\\\\\\\').replace('(','\\\\(').replace(')','\\\\)')
-    content='BT /F1 10 Tf 40 800 Td '+''.join('('+pdf_escape(line)+') Tj 0 -14 Td ' for line in lines)+'ET'
-    objs=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',f'<< /Length {len(content.encode())} >>\nstream\n{content}\nendstream','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
-    out=b'%PDF-1.4\n'; offs=[]
-    for i,o in enumerate(objs,1): offs.append(len(out)); out+=f'{i} 0 obj\n{o}\nendobj\n'.encode()
-    x=len(out); out+=f'xref\n0 {len(objs)+1}\n0000000000 65535 f \n'.encode()+b''.join(f'{q:010d} 00000 n \n'.encode() for q in offs)+f'trailer\n<< /Size {len(objs)+1} /Root 1 0 R >>\nstartxref\n{x}\n%%EOF'.encode(); path.write_bytes(out)
+    # Embed the application's Arabic-capable font and shape Persian text before layout.
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from xml.sax.saxutils import escape
+    font_path=FONT if Path(FONT).exists() else FONT_B
+    if not Path(font_path).exists():
+        raise RuntimeError('فونت فارسی برای ساخت PDF پیدا نشد')
+    if 'NotoFAReport' not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont('NotoFAReport',font_path))
+    style=ParagraphStyle('Persian',fontName='NotoFAReport',fontSize=9,leading=16,
+                         alignment=TA_RIGHT,wordWrap='RTL',spaceAfter=5)
+    story=[]
+    for line in text.replace('\r','').splitlines():
+        if not line.strip():
+            story.append(Spacer(1,5))
+        else:
+            shaped=fa(line)
+            story.append(Paragraph(escape(shaped),style))
+    doc=SimpleDocTemplate(str(path),pagesize=A4,rightMargin=38,leftMargin=38,
+                          topMargin=38,bottomMargin=38,title='گزارش سامانه آماد و پشتیبانی')
+    doc.build(story)
 
 class SplashBadge(Widget):
     def __init__(self, **kwargs):
