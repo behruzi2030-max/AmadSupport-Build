@@ -62,6 +62,7 @@ def local_ips():
 DBDATA = load_db(); save_db(DBDATA)
 SERVER = None
 SESSIONS = {}
+LOGIN_FAILURES = {}
 
 class APIHandler(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
@@ -74,7 +75,12 @@ class APIHandler(BaseHTTPRequestHandler):
     def session_user(self):
         token=self.headers.get('Authorization','').strip()
         if token.startswith('Bearer '): token=token[len('Bearer '):].strip()
-        return SESSIONS.get(token)
+        session=SESSIONS.get(token)
+        if not session: return None
+        if session.get('expires_at',0) < time.time():
+            SESSIONS.pop(token,None)
+            return None
+        return session
     def require_user(self, admin=False):
         user=self.session_user()
         if not user:
@@ -117,14 +123,29 @@ class APIHandler(BaseHTTPRequestHandler):
         try: data=self.read_json()
         except Exception: return self.send_json({'ok':False,'error':'bad json'},400)
         if self.path=='/api/login':
-            u=data.get('username',''); p=data.get('password',''); user=next((x for x in DBDATA['users'] if x['username']==u and x.get('active',True)),None)
-            if not user or not verify(p,user['salt'],user['password']): return self.send_json({'ok':False,'error':'نام کاربری یا رمز عبور نادرست است'},401)
+            u=data.get('username',''); p=data.get('password','')
+            attempt_key=(self.client_address[0],str(u).lower())
+            attempt=LOGIN_FAILURES.get(attempt_key,{})
+            if attempt.get('blocked_until',0)>time.time():
+                return self.send_json({'ok':False,'error':'به‌دلیل تلاش‌های ناموفق، ورود موقتاً مسدود شده است'},429)
+            user=next((x for x in DBDATA['users'] if x['username']==u and x.get('active',True)),None)
+            if not user or not verify(p,user['salt'],user['password']):
+                failures=attempt.get('count',0)+1
+                LOGIN_FAILURES[attempt_key]={'count':failures,'blocked_until':time.time()+900 if failures>=5 else 0}
+                return self.send_json({'ok':False,'error':'نام کاربری یا گذرواژه نادرست است'},401)
+            LOGIN_FAILURES.pop(attempt_key,None)
             track=None
             if DBDATA['chants']:
                 track=DBDATA['chants'][DBDATA['chant_index'] % len(DBDATA['chants'])]; DBDATA['chant_index']=(DBDATA['chant_index']+1)%len(DBDATA['chants']); save_db(DBDATA)
             token=secrets.token_urlsafe(32)
-            SESSIONS[token]={'username':user['username'],'name':user['name'],'role':user['role']}
+            SESSIONS[token]={'username':user['username'],'name':user['name'],'role':user['role'],'expires_at':time.time()+8*60*60}
             return self.send_json({'ok':True,'name':user['name'],'role':user['role'],'token':token,'chant':track,'time':now(),'must_change_password':bool(user.get('must_change_password', user['username']=='admin' and user.get('password')==hashpw('Admin1234',user['salt'])[1]))})
+        if self.path=='/api/logout':
+            user=self.require_user()
+            if not user: return
+            token=self.headers.get('Authorization','').replace('Bearer ','').strip()
+            SESSIONS.pop(token,None)
+            return self.send_json({'ok':True})
         if self.path=='/api/change_password':
             user=self.require_user()
             if not user: return
@@ -164,6 +185,8 @@ class APIHandler(BaseHTTPRequestHandler):
                     u=next((x for x in DBDATA['users'] if x['username']==username),None)
                     if not u: return self.send_json({'ok':False,'error':'کاربر یافت نشد'},404)
                     u.update(salt=salt,password=digest,must_change_password=True)
+                    for token,session in list(SESSIONS.items()):
+                        if session.get('username')==username: SESSIONS.pop(token,None)
                 else: DBDATA['users'].append({'username':username,'name':data.get('name',username),'role':data.get('role','user'),'salt':salt,'password':digest,'active':True,'must_change_password':True})
                 save_db(DBDATA); return self.send_json({'ok':True})
         if self.path=='/api/reports':
@@ -300,8 +323,15 @@ class Home(Screen):
             Popup(title=fa('عدم دسترسی'),content=lbl('این بخش فقط برای مدیر سامانه است',16),size_hint=(.8,.3)).open(); return
         self.manager.current=s
     def logout(self):
+        try:
+            app=App.get_running_app()
+            if app.state.get('server_url') and app.state.get('user',{}).get('token'):
+                req=urllib.request.Request(app.state['server_url']+'/api/logout',data=b'{}',headers={'Content-Type':'application/json','Authorization':'Bearer '+app.state['user']['token']})
+                urllib.request.urlopen(req,timeout=3).read()
+        except Exception: pass
         try: self.clock.cancel()
         except: pass
+        App.get_running_app().state={}
         self.manager.current='login'
 
 class SimpleLog(Screen):
