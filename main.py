@@ -454,9 +454,28 @@ class ChangePassword(Screen):
 
 
 class Users(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8)); root.add_widget(lbl('مدیریت کاربران',24,True)); self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False); self.n=TextInput(hint_text=fa('نام و نام خانوادگی کاربر را وارد کنید'),multiline=False); self.p=TextInput(hint_text=fa('گذرواژهٔ جدید را وارد کنید'),password=True,multiline=False); root.add_widget(self.u); root.add_widget(self.n); root.add_widget(self.p); root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset)); root.add_widget(btn('نمایش فهرست کاربران',self.list_users)); self.user_list=lbl('',14); root.add_widget(self.user_list); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self):
+        self.clear_widgets()
+        root=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8))
+        root.add_widget(lbl('مدیریت کاربران',24,True))
+        self.u=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False)
+        self.first=TextInput(hint_text=fa('نام کاربر را وارد کنید'),multiline=False)
+        self.last=TextInput(hint_text=fa('نام خانوادگی کاربر را وارد کنید'),multiline=False)
+        root.add_widget(self.u); root.add_widget(self.first); root.add_widget(self.last)
+        root.add_widget(lbl('گذرواژهٔ اولیه به‌صورت خودکار ساخته می‌شود: حرف نخست نام + رشتهٔ تصادفی + حرف نخست نام خانوادگی.',13))
+        root.add_widget(btn('ایجاد کاربر',self.add)); root.add_widget(btn('بازنشانی گذرواژهٔ کاربر',self.reset))
+        root.add_widget(btn('نمایش فهرست کاربران',self.list_users))
+        self.user_list=lbl('',14); root.add_widget(self.user_list)
+        root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home')))
+        self.add_widget(root)
     def call(self,action):
-        data={'action':action,'username':self.u.text,'name':self.n.text,'password':self.p.text}; req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')}); return json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
+        first=self.first.text.strip(); last=self.last.text.strip()
+        if not first or not last: raise ValueError('نام و نام خانوادگی را وارد کنید')
+        password=first[0].upper()+secrets.token_hex(5)+last[0].lower()
+        self.generated_password=password
+        data={'action':action,'username':self.u.text.strip(),'name':first+' '+last,'password':password}
+        req=urllib.request.Request(App.get_running_app().state['server_url']+'/api/users',data=json.dumps(data,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+App.get_running_app().state.get('user',{}).get('token','')})
+        return json.loads(urllib.request.urlopen(req,timeout=8).read().decode())
     def list_users(self,*a):
         try:
             data={'action':'list'}
@@ -472,10 +491,10 @@ class Users(Screen):
             self.user_list.text=fa('\n'.join(rows)) if rows else fa('کاربری ثبت نشده است')
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
     def add(self,*a):
-        try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl('کاربر ایجاد شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
+        try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl(('کاربر ایجاد شد. گذرواژهٔ اولیه (فقط این بار نمایش داده می‌شود): '+self.generated_password) if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
         except Exception as e: Popup(title=fa('خطا'),content=lbl(e,16)).open()
     def reset(self,*a):
-        try: r=self.call('reset'); Popup(title=fa('نتیجه'),content=lbl('گذرواژه بازنشانی شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
+        try: r=self.call('reset'); Popup(title=fa('نتیجه'),content=lbl(('گذرواژه بازنشانی شد. گذرواژهٔ تازه (فقط این بار نمایش داده می‌شود): '+self.generated_password) if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
         except Exception as e: Popup(title=fa('خطا'),content=lbl(e,16)).open()
 
 class Chants(Screen):
