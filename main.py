@@ -469,7 +469,7 @@ class Users(Screen):
                 status='فعال' if user.get('active',True) else 'غیرفعال'
                 role='مدیر' if user.get('role')=='admin' else 'کاربر'
                 rows.append(f"{user.get('username','')} — {user.get('name','')} — {role} — {status}")
-            self.user_list.text='\n'.join(rows) if rows else 'کاربری ثبت نشده است'
+            self.user_list.text=fa('\n'.join(rows)) if rows else fa('کاربری ثبت نشده است')
         except Exception as e: Popup(title=fa('خطا'),content=lbl(str(e),14),size_hint=(.9,.3)).open()
     def add(self,*a):
         try: r=self.call('add'); Popup(title=fa('نتیجه'),content=lbl('کاربر ایجاد شد' if r.get('ok') else r.get('error'),16),size_hint=(.8,.3)).open()
