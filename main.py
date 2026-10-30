@@ -21,7 +21,23 @@ from kivy.uix.widget import Widget
 from kivy.graphics import Color, RoundedRectangle
 
 BASE = Path(__file__).resolve().parent
-DATA = Path(App.user_data_dir) / 'data'
+
+def resolve_data_root():
+    try:
+        from kivy.utils import platform
+        if platform == 'android':
+            from jnius import autoclass
+            activity = autoclass('org.kivy.android.PythonActivity').mActivity
+            return Path(str(activity.getFilesDir().getAbsolutePath())) / 'amad_support'
+        if platform == 'win':
+            return Path(os.environ.get('APPDATA', str(Path.home()))) / 'AmadSupport'
+        if platform == 'macosx':
+            return Path.home() / 'Library' / 'Application Support' / 'AmadSupport'
+    except Exception:
+        pass
+    return Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local' / 'share'))) / 'amad_support'
+
+DATA = resolve_data_root() / 'data'
 AUDIO = DATA / 'noheh'
 REPORTS = DATA / 'reports'
 for p in (DATA, AUDIO, REPORTS): p.mkdir(parents=True, exist_ok=True)
