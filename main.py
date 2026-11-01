@@ -41,6 +41,57 @@ DATA = resolve_data_root() / 'data'
 AUDIO = DATA / 'noheh'
 REPORTS = DATA / 'reports'
 for p in (DATA, AUDIO, REPORTS): p.mkdir(parents=True, exist_ok=True)
+
+# ---------- crash reporter ----------
+import sys as _sys, traceback as _tb
+
+def _crash_text():
+    return ''.join(_tb.format_exception(*_sys.exc_info()))
+
+def _log_crash():
+    try:
+        (DATA / 'crash.log').write_text(now() + '\n' + _crash_text(), encoding='utf-8')
+    except Exception:
+        pass
+
+def _show_crash_screen(text):
+    try:
+        from kivy.app import App as _App
+        from kivy.core.window import Window as _W
+        from kivy.uix.scrollview import ScrollView as _SV
+        from kivy.uix.label import Label as _L
+        _W.clearcolor = (0.08, 0.08, 0.08, 1)
+        sv = _SV(size=_W.size)
+        lb = _L(text=text[-3000:], font_name='Roboto', font_size='11sp',
+                halign='left', valign='top', size_hint_y=None,
+                color=(1, 0.35, 0.35, 1), padding=(12, 12))
+        lb.bind(width=lambda i, v: setattr(lb, 'text_size', (v, None)))
+        lb.bind(texture_size=lambda i, v: setattr(lb, 'height', v[1]))
+        sv.add_widget(lb)
+        _W.add_widget(sv)
+        _App.get_running_app().title = 'AMAD CRASH'
+    except Exception:
+        pass
+
+def _excepthook(etype, value, tb):
+    _sys.__excepthook__(etype, value, tb)
+    _log_crash()
+    _show_crash_screen(''.join(_tb.format_exception(etype, value, tb)))
+    # keep window alive so the user can read/screenshot the error
+    import time as _t
+    while True:
+        _t.sleep(1)
+
+_sys.excepthook = _excepthook
+
+from kivy.base import ExceptionManager as _EM
+def _em_handler(exc):
+    _log_crash()
+    _show_crash_screen(_crash_text())
+    raise exc
+_EM.add_handler(_em_handler)
+# ------------------------------------
+
 DB = DATA / 'db.json'
 FONT = str((BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf') if (BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf').exists() else (BASE / 'NotoNaskhArabic-Regular.ttf'))
 FONT_B = str((BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf') if (BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf').exists() else (BASE / 'NotoNaskhArabic-Bold.ttf'))
@@ -848,4 +899,12 @@ class AmadApp(App):
             if s: s.play()
         except Exception: pass
 
-if __name__=='__main__': AmadApp().run()
+if __name__=='__main__':
+    try:
+        AmadApp().run()
+    except BaseException:
+        _log_crash()
+        _show_crash_screen(_crash_text())
+        import time as _t
+        while True:
+            _t.sleep(1)
