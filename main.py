@@ -81,10 +81,18 @@ except Exception:
 try:
     sys.path.insert(0, str(APP_DIR))
     import app_main  # noqa: E402  (registers fonts, data dirs, crash log)
+    try:
+        app_main.boot_log('bootstrap: app_main imported OK')
+    except Exception:
+        pass
     app_main.run_app()
 except BaseException:
     text = _format_exc()
     _log(text)
+    try:
+        app_main.boot_log('FATAL in bootstrap:\n' + text)
+    except Exception:
+        pass
     _show_error(text)
     while True:
         time.sleep(5)

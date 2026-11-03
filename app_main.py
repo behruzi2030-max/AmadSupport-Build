@@ -42,6 +42,15 @@ AUDIO = DATA / 'noheh'
 REPORTS = DATA / 'reports'
 for p in (DATA, AUDIO, REPORTS): p.mkdir(parents=True, exist_ok=True)
 
+# ---------- boot stage logger (diagnosing black-screen-on-startup) ----------
+def boot_log(stage):
+    try:
+        with open(DATA / 'boot.log', 'a', encoding='utf-8') as fh:
+            fh.write(now() + '  ' + stage + '\n')
+    except Exception:
+        pass
+
+
 # ---------- crash reporter ----------
 import sys as _sys, traceback as _tb
 
@@ -54,24 +63,37 @@ def _log_crash():
     except Exception:
         pass
 
+try:
+    from kivy.core.window import Window as _W
+except Exception:
+    _W = None
+
 def _show_crash_screen(text):
+    # IMPORTANT: must work even when the App crashed inside build()
+    # (no running app, no root widget). Never rely on get_running_app().
     try:
-        from kivy.app import App as _App
-        from kivy.core.window import Window as _W
-        from kivy.uix.scrollview import ScrollView as _SV
-        from kivy.uix.label import Label as _L
-        _W.clearcolor = (0.08, 0.08, 0.08, 1)
-        sv = _SV(size=_W.size)
-        lb = _L(text=text[-3000:], font_name='Roboto', font_size='11sp',
-                halign='left', valign='top', size_hint_y=None,
-                color=(1, 0.35, 0.35, 1), padding=(12, 12))
-        lb.bind(width=lambda i, v: setattr(lb, 'text_size', (v, None)))
-        lb.bind(texture_size=lambda i, v: setattr(lb, 'height', v[1]))
-        sv.add_widget(lb)
-        _W.add_widget(sv)
-        _App.get_running_app().title = 'AMAD CRASH'
+        from kivy.core.window import Window
+        Window.clearcolor = (0.10, 0.10, 0.11, 1)
     except Exception:
         pass
+    try:
+        from kivy.uix.scrollview import ScrollView as _SV
+        from kivy.uix.label import Label as _L
+        from kivy.base import runTouchApp as _RTA
+        lb = _L(text=text[-4000:], font_name='Roboto', font_size='11sp',
+                halign='left', valign='top', size_hint_y=None,
+                color=(1, 0.4, 0.4, 1), padding=(12, 12))
+        lb.bind(width=lambda i, v: setattr(lb, 'text_size', (v, None)))
+        lb.bind(texture_size=lambda i, v: setattr(lb, 'height', v[1]))
+        sv = _SV(size=_W.size)
+        sv.add_widget(lb)
+        _W.add_widget(sv)
+        _RTA(sv)   # own event loop: shows the traceback even if App.run died
+    except Exception as e:
+        try:
+            _log_crash()
+        except Exception:
+            pass
 
 def _excepthook(etype, value, tb):
     _sys.__excepthook__(etype, value, tb)
@@ -851,6 +873,7 @@ class AmadApp(App):
             pass
 
     def build(self):
+        boot_log('build(): entered')
         self.title = 'سامانه آماد و پشتیبانی پایگاه شهید صیاد شیرازی'
         self.state={}
         sm=ScreenManager()
@@ -886,7 +909,9 @@ class AmadApp(App):
         return splash
 
     def _show_main(self, dt):
+        boot_log('_show_main: switching to main UI')
         self.root = self._main_root
+        boot_log('_show_main: switched OK')
 
     def play_chant(self, name):
         url=self.state['server_url']+'/audio/'+urllib.parse.quote(name); local=AUDIO/name
@@ -900,11 +925,16 @@ class AmadApp(App):
         except Exception: pass
 
 def run_app():
+    boot_log('run_app: entering')
     try:
+        boot_log('run_app: AmadApp().run() starting')
         AmadApp().run()
+        boot_log('run_app: App.run returned normally')
     except BaseException:
+        text = _crash_text()
         _log_crash()
-        _show_crash_screen(_crash_text())
+        boot_log('FATAL in run_app:\n' + text)
+        _show_crash_screen(text)
         import time as _t
         while True:
             _t.sleep(1)
