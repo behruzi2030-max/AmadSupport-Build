@@ -367,11 +367,31 @@ class Login(Screen):
         root.add_widget(lbl('بسم‌الله الرحمن الرحیم\nبسیج، لشکر مخلص خداست (امام خمینی، ره)\nبسیجی یعنی علی که تمام وجودش وقف اسلام بود (امام شهید، ره)',18))
         self.user=TextInput(hint_text=fa('نام کاربری (به حروف لاتین) را وارد کنید'),multiline=False)
         self.pw=TextInput(hint_text=fa('گذرواژه را وارد کنید'),password=True,multiline=False)
-        self.url=TextInput(text='http://127.0.0.1:8765',hint_text=fa('نشانی سرور را وارد کنید'),multiline=False)
-        root.add_widget(self.user); root.add_widget(self.pw); root.add_widget(self.url)
+        self.url=TextInput(text=self._load_server_url(),multiline=False)
+        self.url.bind(text=lambda inst,v:self._save_server_url(v))
+        root.add_widget(self.user); root.add_widget(self.pw)
         root.add_widget(btn('ورود به سامانه',self.login))
-        root.add_widget(btn('راه‌اندازی این تلفن همراه به‌عنوان سرور',self.server_mode))
+        root.add_widget(btn('تنظیمات اتصال به سرور',self.connection_settings,36))
         self.add_widget(root)
+    def _settings_path(self): return DATA/'server_url.txt'
+    def _load_server_url(self):
+        try: return self._settings_path().read_text(encoding='utf-8').strip() or 'http://127.0.0.1:8765'
+        except Exception: return 'http://127.0.0.1:8765'
+    def _save_server_url(self,v):
+        try:
+            DATA.mkdir(parents=True,exist_ok=True)
+            self._settings_path().write_text(v.strip(),encoding='utf-8')
+        except Exception: pass
+    def connection_settings(self,*a):
+        box=BoxLayout(orientation='vertical',padding=dp(10),spacing=dp(8))
+        box.add_widget(lbl('نشانی سرور (مثال: http://192.168.1.10:8765)',15))
+        inp=TextInput(text=self.url.text,multiline=False)
+        box.add_widget(inp)
+        box.add_widget(btn('ذخیرهٔ نشانی',lambda b:self._apply_url(inp),46))
+        box.add_widget(btn('راه‌اندازی سرور روی این تلفن',self.server_mode,46))
+        Popup(title=fa('تنظیمات اتصال به سرور'),content=box,size_hint=(.92,.46)).open()
+    def _apply_url(self,inp):
+        self.url.text=inp.text.strip() or 'http://127.0.0.1:8765'
     def login(self,*a):
         try:
             data=json.dumps({'username':self.user.text.strip(),'password':self.pw.text}).encode(); req=urllib.request.Request(self.url.text.rstrip('/')+'/api/login',data=data,headers={'Content-Type':'application/json'}); r=json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
@@ -723,7 +743,25 @@ class Reports(Screen):
             Popup(title=fa('خطا در تهیه گزارش'),content=lbl(str(e),14),size_hint=(.9,.35)).open()
 
 class ServerScreen(Screen):
-    def on_enter(self): self.clear_widgets(); root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8)); root.add_widget(lbl('سرور این تلفن همراه',24,True)); root.add_widget(lbl('درگاه: ۸۷۶۵',18)); root.add_widget(lbl('\n'.join('نشانی: http://'+ip+':8765' for ip in local_ips()),18)); root.add_widget(lbl('سه تلفن همراه دیگر می‌توانند با همین نشانی و در همان شبکه به سرور متصل شوند.',16)); root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'))); self.add_widget(root)
+    def on_enter(self):
+        self.clear_widgets()
+        root=BoxLayout(orientation='vertical',padding=dp(14),spacing=dp(8))
+        root.add_widget(lbl('تنظیمات سرور',24,True))
+        root.add_widget(lbl('درگاه: ۸۷۶۵',18))
+        root.add_widget(lbl('\n'.join('نشانی این تلفن در شبکه: http://'+ip+':8765' for ip in local_ips()),16))
+        login=App.get_running_app().root.get_screen('login') if App.get_running_app().root else None
+        current=login.url.text if login else 'http://127.0.0.1:8765'
+        root.add_widget(lbl('نشانی سروری که این دستگاه به آن متصل می‌شود:',16))
+        self.url_inp=TextInput(text=current,hint_text=fa('مثال: http://192.168.1.10:8765'),multiline=False,size_hint_y=None,height=dp(46))
+        root.add_widget(self.url_inp)
+        root.add_widget(btn('ذخیرهٔ نشانی',self.save_url,46))
+        root.add_widget(lbl('سه تلفن همراه دیگر می‌توانند با همین نشانی و در همان شبکه به سرور متصل شوند.',15))
+        root.add_widget(btn('بازگشت',lambda b:setattr(self.manager,'current','home'),44))
+        self.add_widget(root)
+    def save_url(self,*a):
+        login=App.get_running_app().root.get_screen('login')
+        login.url.text=self.url_inp.text.strip() or 'http://127.0.0.1:8765'
+        Popup(title=fa('ذخیره شد'),content=lbl('نشانی سرور به‌روزرسانی شد',15),size_hint=(.8,.28)).open()
 
 def share_handover_entry(entry):
     """Open Android's native share chooser with the handover-card details as text."""
@@ -903,13 +941,13 @@ class AmadApp(App):
         splash.bind(pos=lambda w, v: setattr(self._splash_bg, 'pos', v),
                     size=lambda w, v: setattr(self._splash_bg, 'size', v))
         splash.add_widget(Widget())
+        from kivy.uix.image import Image as _BadgeImage
         badge_box = BoxLayout(orientation='vertical', size_hint=(1, None), height=dp(190),
                               padding=dp(20))
-        badge = SplashBadge(size_hint=(None, None), size=(dp(150), dp(150)),
+        badge = _BadgeImage(source=str(BASE / 'icon.png'), allow_stretch=True, keep_ratio=True,
+                            size_hint=(None, None), size=(dp(160), dp(160)),
                             pos_hint={'center_x': .5})
         badge_box.add_widget(badge)
-        badge_box.add_widget(Label(text='✦', font_size='58sp', color=(1, 1, 1, 1),
-                                   size_hint=(1, 1), pos_hint={'center_x': .5}))
         splash.add_widget(badge_box)
         splash.add_widget(Label(text=fa('سامانه آماد و پشتیبانی'),
                                 font_name='NotoFA', font_size='25sp',
