@@ -349,6 +349,19 @@ class Login(Screen):
     def on_enter(self):
         self.clear_widgets()
         root=BoxLayout(orientation='vertical',padding=dp(18),spacing=dp(12))
+        # portraits: top-right pair (Imam Khomeini + Ayatollah Khamenei), top-left (Seyyed Mojtaba)
+        from kivy.uix.image import Image as KImage
+        def portrait(fname):
+            img=KImage(source=str(BASE/'assets'/fname), allow_stretch=True, keep_ratio=True,
+                       size_hint=(None,None), size=(dp(96),dp(112)))
+            return img
+        portraits=BoxLayout(orientation='horizontal', size_hint=(1,None), height=dp(112))
+        right_pair=BoxLayout(orientation='horizontal', size_hint=(None,1), width=dp(196), spacing=dp(4))
+        right_pair.add_widget(portrait('khomeini.jpg')); right_pair.add_widget(portrait('khamenei.jpg'))
+        portraits.add_widget(right_pair)
+        portraits.add_widget(Widget())          # flexible space keeps pair on the right
+        portraits.add_widget(portrait('mojtaba.jpg'))
+        root.add_widget(portraits)
         root.add_widget(lbl('سامانه آماد و پشتیبانی',30,True))
         root.add_widget(lbl('پایگاه شهید صیاد شیرازی',21))
         root.add_widget(lbl('بسم‌الله الرحمن الرحیم\nبسیج، لشکر مخلص خداست (امام خمینی، ره)\nبسیجی یعنی علی که تمام وجودش وقف اسلام بود (امام شهید، ره)',18))
@@ -723,7 +736,7 @@ def share_handover_entry(entry):
         'شماره تلفن: '+str(entry.get('phone','')),
         'مشخصات تجهیزات: '+str(entry.get('equipment_details','')),
         'تاریخ و ساعت تحویل: '+str(entry.get('timestamp','')),
-        'امضای دریافت‌کننده: '+str(entry.get('signature','')),
+        'امضای تحویل‌گیرنده: '+str(entry.get('signature','')),
     ]
     payload='\n'.join(lines)
     try:
@@ -775,7 +788,7 @@ h3 {{ text-align: center; font-size: 10pt; margin: 0 20mm 2mm 20mm; }}
 <div class="row">شماره تلفن: {value('phone')}</div>
 <div class="row">مشخصات تجهیزات: <span class="details">{value('equipment_details')}</span></div>
 <div class="row">تاریخ و ساعت تحویل: {timestamp}</div>
-<div class="sign">امضای دریافت‌کننده: {value('signature')}　　امضای تحویل‌دهنده: __________________</div>
+<div class="sign">امضای تحویل‌گیرنده: {value('signature')}　　امضای تحویل‌دهنده: __________________</div>
 </section><script>window.onload=()=>{{if(new URLSearchParams(location.search).has('print')) window.print();}}</script></body></html>'''
     target=REPORTS/('handover_card_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.html')
     target.write_text(card,encoding='utf-8')
@@ -898,10 +911,10 @@ class AmadApp(App):
         badge_box.add_widget(Label(text='✦', font_size='58sp', color=(1, 1, 1, 1),
                                    size_hint=(1, 1), pos_hint={'center_x': .5}))
         splash.add_widget(badge_box)
-        splash.add_widget(Label(text='سامانه آماد و پشتیبانی',
+        splash.add_widget(Label(text=fa('سامانه آماد و پشتیبانی'),
                                 font_name='NotoFA', font_size='25sp',
                                 color=(0.18, 0.24, 0.12, 1), size_hint=(1, None), height=dp(48)))
-        splash.add_widget(Label(text='پایگاه شهید صیاد شیرازی',
+        splash.add_widget(Label(text=fa('پایگاه شهید صیاد شیرازی'),
                                 font_name='NotoFA', font_size='19sp',
                                 color=(0.27, 0.34, 0.16, 1), size_hint=(1, None), height=dp(40)))
         splash.add_widget(Widget())
