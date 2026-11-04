@@ -362,6 +362,13 @@ class Login(Screen):
         portraits.add_widget(Widget())          # flexible space keeps pair on the right
         portraits.add_widget(portrait('mojtaba.jpg'))
         root.add_widget(portraits)
+        # centered base emblem in the سامانه title frame
+        from kivy.uix.anchorlayout import AnchorLayout
+        anchor=AnchorLayout(anchor_x='center', anchor_y='center', size_hint=(1,None), height=dp(128))
+        logo=KImage(source=str(BASE/'assets'/'emblem.png'), allow_stretch=True, keep_ratio=True,
+                    size_hint=(None,None), size=(dp(128),dp(128)))
+        anchor.add_widget(logo)
+        root.add_widget(anchor)
         root.add_widget(lbl('سامانه آماد و پشتیبانی',30,True))
         root.add_widget(lbl('پایگاه شهید صیاد شیرازی',21))
         root.add_widget(lbl('بسم‌الله الرحمن الرحیم\nبسیج، لشکر مخلص خداست (امام خمینی، ره)\nبسیجی یعنی علی که تمام وجودش وقف اسلام بود (امام شهید، ره)',18))
