@@ -44,7 +44,14 @@ jobs:
           sudo apt-get install -y \
             git zip unzip autoconf automake autopoint gettext libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
-            cmake libffi-dev libssl-dev libltdl-dev
+            cmake libffi-dev libssl-dev libltdl-dev ant
+
+      - name: Pre-seed Apache ANT (skip archive.apache.org download)
+        run: |
+          mkdir -p ~/.buildozer/android/platform/apache-ant-1.9.4/bin
+          if [ -d /usr/share/ant ]; then cp -r /usr/share/ant/* ~/.buildozer/android/platform/apache-ant-1.9.4/ 2>/dev/null || true; fi
+          if [ -x /usr/bin/ant ]; then cp /usr/bin/ant ~/.buildozer/android/platform/apache-ant-1.9.4/bin/ 2>/dev/null || true; fi
+          ls -R ~/.buildozer/android/platform/apache-ant-1.9.4 | head -n 40
 
       - name: Install Buildozer and Cython
         run: |
