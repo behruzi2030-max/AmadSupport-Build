@@ -180,7 +180,7 @@ class APIHandler(BaseHTTPRequestHandler):
             return None
         return user
     def do_GET(self):
-        if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.1'})
+        if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.2'})
         if self.path.startswith('/audio/'):
             if not self.require_user(): return
             name=os.path.basename(urllib.parse.unquote(self.path.split('/audio/',1)[1])); f=AUDIO/name
@@ -935,41 +935,61 @@ class AmadApp(App):
         self.title = 'سامانه آماد و پشتیبانی پایگاه شهید صیاد شیرازی'
         self.state={}
         sm=ScreenManager()
-        sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home'))
-        sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'
-        sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports'))
-        sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); sm.add_widget(ChangePassword(name='change_password'))
-        self._main_root = sm
-
-        splash = BoxLayout(orientation='vertical', padding=dp(28), spacing=dp(18))
+        # --- splash as a Screen (no root swap -> fixes black screen) ---
+        from kivy.uix.image import Image as _BadgeImage
+        splash_screen = Screen(name='splash')
+        splash = BoxLayout(orientation='vertical', padding=dp(28), spacing=dp(10))
         with splash.canvas.before:
-            Color(0.94, 0.95, 0.91, 1)
+            Color(0.063, 0.125, 0.227, 1)  # same navy as presplash #10203A
             self._splash_bg = RoundedRectangle(pos=splash.pos, size=splash.size, radius=[0])
         splash.bind(pos=lambda w, v: setattr(self._splash_bg, 'pos', v),
                     size=lambda w, v: setattr(self._splash_bg, 'size', v))
-        splash.add_widget(Widget())
-        from kivy.uix.image import Image as _BadgeImage
-        badge_box = BoxLayout(orientation='vertical', size_hint=(1, None), height=dp(190),
-                              padding=dp(20))
-        badge = _BadgeImage(source=str(BASE / 'icon.png'), allow_stretch=True, keep_ratio=True,
-                            size_hint=(None, None), size=(dp(160), dp(160)),
+        splash.add_widget(Widget(size_hint=(1, None), height=dp(30)))
+        badge_box = BoxLayout(orientation='vertical', size_hint=(1, None), height=dp(230),
+                              padding=dp(10))
+        # clean circular transparent emblem, fully inside circle
+        emblem_src = str(BASE / 'assets' / 'emblem.png')
+        try:
+            import os as _os
+            if not _os.path.exists(emblem_src):
+                emblem_src = str(BASE / 'icon.png')
+        except Exception:
+            pass
+        badge = _BadgeImage(source=emblem_src, allow_stretch=True, keep_ratio=True,
+                            size_hint=(None, None), size=(dp(200), dp(200)),
                             pos_hint={'center_x': .5})
         badge_box.add_widget(badge)
         splash.add_widget(badge_box)
         splash.add_widget(Label(text=fa('سامانه آماد و پشتیبانی'),
                                 font_name='NotoFA', font_size='25sp',
-                                color=(0.18, 0.24, 0.12, 1), size_hint=(1, None), height=dp(48)))
+                                color=(0.92, 0.80, 0.36, 1), size_hint=(1, None), height=dp(52)))
         splash.add_widget(Label(text=fa('پایگاه شهید صیاد شیرازی'),
                                 font_name='NotoFA', font_size='19sp',
-                                color=(0.27, 0.34, 0.16, 1), size_hint=(1, None), height=dp(40)))
+                                color=(1, 1, 1, 1), size_hint=(1, None), height=dp(42)))
+        splash.add_widget(Label(text=fa('در حال بارگذاری...'),
+                                font_name='NotoFA', font_size='14sp',
+                                color=(0.78, 0.78, 0.78, 1), size_hint=(1, None), height=dp(30)))
         splash.add_widget(Widget())
-        Clock.schedule_once(self._show_main, 4.0)
-        return splash
+        splash_screen.add_widget(splash)
+        sm.add_widget(splash_screen)
+        sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home'))
+        sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'
+        sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports'))
+        sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); sm.add_widget(ChangePassword(name='change_password'))
+        sm.current = 'splash'
+        self._main_root = sm
+        Clock.schedule_once(self._show_main, 3.0)
+        boot_log('build(): returning ScreenManager with splash')
+        return sm
 
     def _show_main(self, dt):
-        boot_log('_show_main: switching to main UI')
-        self.root = self._main_root
-        boot_log('_show_main: switched OK')
+        boot_log('_show_main: switching splash -> login')
+        try:
+            if hasattr(self, '_main_root') and self._main_root is not None:
+                self._main_root.current = 'login'
+                boot_log('_show_main: switched to login OK')
+        except Exception as e:
+            boot_log('_show_main FAILED: %s' % e)
 
     def play_chant(self, name):
         url=self.state['server_url']+'/audio/'+urllib.parse.quote(name); local=AUDIO/name

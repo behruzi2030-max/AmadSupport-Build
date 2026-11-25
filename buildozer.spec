@@ -4,7 +4,7 @@ package.name = amad_support
 package.domain = ir.sayyad.amad
 source.dir = .
 source.include_exts = py,png,jpg,jpeg,kv,atlas,ttf,mp3,wav,m4a,json,md
-version = 5.0.1
+version = 5.0.2
 requirements = python3,kivy==2.3.1,arabic-reshaper,python-bidi,reportlab,pillow,charset-normalizer
 orientation = portrait
 icon.filename = icon.png
