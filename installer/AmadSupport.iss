@@ -1,5 +1,5 @@
 #define MyAppName "سامانه آماد و پشتیبانی پایگاه شهید صیاد شیرازی"
-#define MyAppVersion "5.0.2"
+#define MyAppVersion "5.0.3"
 #define MyAppExeName "AmadSupport.exe"
 
 [Setup]

@@ -40,7 +40,11 @@ def resolve_data_root():
 DATA = resolve_data_root() / 'data'
 AUDIO = DATA / 'noheh'
 REPORTS = DATA / 'reports'
-for p in (DATA, AUDIO, REPORTS): p.mkdir(parents=True, exist_ok=True)
+for _p in (DATA, AUDIO, REPORTS):
+    try:
+        _p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 # ---------- boot stage logger (diagnosing black-screen-on-startup) ----------
 def boot_log(stage):
@@ -69,6 +73,15 @@ except Exception:
     _W = None
 
 def _show_crash_screen(text):
+    try:
+        from kivy.app import App as _App
+        _a=_App.get_running_app()
+        if _a is not None and getattr(_a,'root',None) is not None:
+            try: _log_crash()
+            except Exception: pass
+            return
+    except Exception:
+        pass
     # IMPORTANT: must work even when the App crashed inside build()
     # (no running app, no root widget). Never rely on get_running_app().
     try:
@@ -117,7 +130,10 @@ _EM.add_handler(_em_handler)
 DB = DATA / 'db.json'
 FONT = str((BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf') if (BASE / 'assets' / 'NotoNaskhArabic-Regular.ttf').exists() else (BASE / 'NotoNaskhArabic-Regular.ttf'))
 FONT_B = str((BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf') if (BASE / 'assets' / 'NotoNaskhArabic-Bold.ttf').exists() else (BASE / 'NotoNaskhArabic-Bold.ttf'))
-LabelBase.register(name='NotoFA', fn_regular=FONT, fn_bold=FONT_B)
+try:
+    LabelBase.register(name='NotoFA', fn_regular=FONT, fn_bold=FONT_B)
+except Exception:
+    pass
 
 
 def now(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -148,7 +164,14 @@ def local_ips():
     except Exception: pass
     return ips or ['127.0.0.1']
 
-DBDATA = load_db(); save_db(DBDATA)
+try:
+    DBDATA = load_db()
+    try:
+        save_db(DBDATA)
+    except Exception:
+        pass
+except Exception:
+    DBDATA = {'users':[],'chant_index':0,'chants':[],'repairs':[],'equipment':[],'created':now()}
 SERVER = None
 SESSIONS = {}
 LOGIN_FAILURES = {}
@@ -180,7 +203,7 @@ class APIHandler(BaseHTTPRequestHandler):
             return None
         return user
     def do_GET(self):
-        if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.2'})
+        if self.path=='/api/info': return self.send_json({'ok':True,'name':'سامانه آماد و پشتیبانی','version':'5.0.3'})
         if self.path.startswith('/audio/'):
             if not self.require_user(): return
             name=os.path.basename(urllib.parse.unquote(self.path.split('/audio/',1)[1])); f=AUDIO/name
@@ -972,10 +995,30 @@ class AmadApp(App):
         splash.add_widget(Widget())
         splash_screen.add_widget(splash)
         sm.add_widget(splash_screen)
-        sm.add_widget(Login(name='login')); sm.add_widget(Home(name='home'))
-        sm.add_widget(SimpleLog(name='repairs')); sm.get_screen('repairs').typ='repairs'; sm.get_screen('repairs').title='تعمیرات'
-        sm.add_widget(EquipmentScreen(name='equipment')); sm.add_widget(Reports(name='reports'))
-        sm.add_widget(Users(name='users')); sm.add_widget(Chants(name='chants')); sm.add_widget(ServerScreen(name='server')); sm.add_widget(ChangePassword(name='change_password'))
+        try:
+            from kivy.uix.screenmanager import NoTransition
+            sm.transition=NoTransition()
+        except Exception:
+            pass
+        def _safe_add(w):
+            try:
+                sm.add_widget(w)
+                try: boot_log('add '+w.name+' OK')
+                except: pass
+            except Exception as e:
+                try: boot_log('add '+getattr(w,'name','?')+' FAIL: %s'%e)
+                except: pass
+        _safe_add(Login(name='login')); _safe_add(Home(name='home'))
+        try:
+            _r=SimpleLog(name='repairs'); _r.typ='repairs'; _r.title='تعمیرات'; _safe_add(_r)
+        except Exception as e:
+            try: boot_log('repairs FAIL %s'%e)
+            except: pass
+        for _cls,_nm in [(EquipmentScreen,'equipment'),(Reports,'reports'),(Users,'users'),(Chants,'chants'),(ServerScreen,'server'),(ChangePassword,'change_password')]:
+            try: _safe_add(_cls(name=_nm))
+            except Exception as e:
+                try: boot_log(_nm+' FAIL %s'%e)
+                except: pass
         sm.current = 'splash'
         self._main_root = sm
         Clock.schedule_once(self._show_main, 3.0)
